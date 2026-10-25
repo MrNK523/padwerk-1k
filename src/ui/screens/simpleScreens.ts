@@ -1,4 +1,3 @@
-import { padName } from '../../core/model';
 import type { HwEvent } from '../../input/events';
 import { CELL_H, CELL_W } from '../display/font5x7';
 import { FrameBuffer, LCD_W } from '../display/framebuffer';
@@ -8,34 +7,6 @@ function title(fb: FrameBuffer, text: string, right = ''): void {
   fb.text(1, 0, text);
   if (right) fb.text(LCD_W - right.length * CELL_W - 1, 0, right);
   fb.invertRect(0, 0, LCD_W, CELL_H);
-}
-
-/** MAIN – M1: Program- und Pad-Übersicht. Der Sequencer-Main-Screen kommt in M2. */
-export class MainScreen implements Screen {
-  readonly id = 'main';
-  constructor(private ctx: AppCtx, private voices: () => number) {}
-  softkeys() { return ['', '', '', '', '', '']; }
-  render(fb: FrameBuffer): void {
-    const { store, ui } = this.ctx;
-    fb.clear();
-    const prog = store.currentProgram;
-    title(fb, 'MAIN', `Bank ${'ABCD'[ui.bank]}`);
-    const idx = store.state.programs.indexOf(prog) + 1;
-    fb.text(0, CELL_H + 1, `Pgm: ${pad2(idx)}-${prog.name}`);
-    const pad = prog.pads[ui.selectedPad];
-    const sample = store.sample(pad?.layers[0].sampleId ?? null);
-    fb.text(0, 2 * CELL_H + 1, `Pad: ${padName(ui.selectedPad)} ${sample?.name ?? '(leer)'}`);
-    const vel = ui.lastVelocity === null ? '---' : String(ui.lastVelocity).padStart(3);
-    const full = ui.fullLevel ? `  FULL LEVEL ${ui.fullLevelValue}` : '';
-    fb.text(0, 3 * CELL_H + 1, `Vel: ${vel}${full}`);
-    const l = ui.levels16;
-    fb.text(0, 4 * CELL_H + 1, ui.levels16On ? `16 Levels: ${l.type} von ${padName(l.sourcePad)}` : '16 Levels: aus');
-    fb.text(0, 5 * CELL_H + 1, `Stimmen ${this.voices()}/32   Samples ${store.state.samples.length}`);
-    drawSoftkeys(fb, this.softkeys());
-    if (ui.message) { fb.fillRect(0, 56, LCD_W, 8, false); fb.text(0, 56, ui.message.slice(0, 40)); }
-    else fb.text(0, 56, 'Sequencer folgt in M2');
-  }
-  onEvent(_e: HwEvent): boolean { return false; }
 }
 
 /** Modi, die noch nicht gebaut sind: zeigt Name und Meilenstein. */

@@ -33,3 +33,14 @@ Belegung nach physischer Taste – gleich auf deutscher und englischer Tastatur.
 | PLAY / STOP / PLAY START | Leertaste / ^ (US: `) / I |
 | AFTER | B |
 | Data Wheel | Bild ↑ / Bild ↓, Num + / Num −, Mausrad über Display oder Wheel |
+
+## Transport-Kombinationen
+| Funktion | Tasten |
+| --- | --- |
+| Aufnahme von vorn | O halten + I (REC + PLAY START) |
+| Overdub von vorn | P halten + I |
+| Aufnahme ab Position | O halten + Leertaste |
+| Wait for Key | O (REC allein), dann Pad |
+| Note Repeat | T halten + Pad halten; T halten + F1–F6 wählt das Raster |
+| Track wechseln | Tab (MODE) halten + Bild ↑/↓ |
+| UNDO SEQ | U |

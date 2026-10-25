@@ -2,6 +2,8 @@ import {
   type DrumProgram, type Layer, type PadParams, type SampleMeta,
   MAX_PROGRAMS, newDrumProgram, sanitizeName, uniqueName,
 } from '../core/model';
+import { MAX_SEQUENCES, newSequence, type NoteEvent, type Sequence, type TimeSig, type Track } from '../core/sequence';
+import { defaultSeqSettings, type SeqSettings } from '../core/sequencerCore';
 
 /** Audiodaten liegen getrennt von den (serialisierbaren) Metadaten. */
 export interface SampleAudio {
@@ -13,7 +15,10 @@ export interface SampleAudio {
 export type Change =
   | { kind: 'sample'; id: string; removed?: boolean }
   | { kind: 'program'; id: string; removed?: boolean }
-  | { kind: 'current-program'; id: string };
+  | { kind: 'current-program'; id: string }
+  /** `fromEngine` = Änderung kam aus dem Worklet (Aufnahme) und muss nicht zurückgespiegelt werden */
+  | { kind: 'sequence'; index: number; fromEngine?: boolean }
+  | { kind: 'seq-settings' };
 
 export type ChangeListener = (c: Change) => void;
 
@@ -21,6 +26,12 @@ export interface ProjectState {
   samples: SampleMeta[];
   programs: DrumProgram[];
   currentProgramId: string;
+  /** 99 Plätze; null = ungenutzt („(unused)“) */
+  sequences: (Sequence | null)[];
+  currentSeq: number;
+  activeTrack: number;
+  soloTrack: number | null;
+  seqSettings: SeqSettings;
 }
 
 /**
@@ -35,8 +46,17 @@ export class Store {
 
   constructor() {
     const first = newDrumProgram(this.id('p'), 'Program01');
-    this.state = { samples: [], programs: [first], currentProgramId: first.id };
+    this.state = {
+      samples: [], programs: [first], currentProgramId: first.id,
+      sequences: Array.from({ length: MAX_SEQUENCES }, () => null),
+      currentSeq: 0, activeTrack: 0, soloTrack: null, seqSettings: defaultSeqSettings(),
+    };
+    this.state.sequences[0] = newSequence(0, first.id);
   }
+
+  private undoSnapshot: { index: number; seq: Sequence } | null = null;
+  /** true = letzte Aufnahme ist gerade zurückgenommen (UNDO-LED aus) */
+  private undone = false;
 
   private id(prefix: string): string {
     return `${prefix}${this.nextId++}`;
@@ -158,5 +178,121 @@ export class Store {
       pad.layers[0] = { ...structuredClone(base), tune: semis };
     });
     this.emit({ kind: 'program', id: programId });
+  }
+
+  // ---------- Sequenzen ----------
+
+  get currentSequence(): Sequence {
+    return this.ensureSequence(this.state.currentSeq);
+  }
+
+  /** Ungenutzte Sequenz beim ersten Gebrauch anlegen (Werte wie neue Sequenz am Gerät). */
+  ensureSequence(index: number): Sequence {
+    let seq = this.state.sequences[index];
+    if (!seq) {
+      seq = newSequence(index, this.state.currentProgramId);
+      this.state.sequences[index] = seq;
+    }
+    return seq;
+  }
+
+  setCurrentSeq(index: number): void {
+    const i = Math.min(MAX_SEQUENCES - 1, Math.max(0, index));
+    if (i === this.state.currentSeq) return;
+    this.state.currentSeq = i;
+    this.undoSnapshot = null;
+    this.emit({ kind: 'sequence', index: i });
+    this.syncProgramToTrack();
+  }
+
+  get activeTrack(): Track {
+    return this.currentSequence.tracks[this.state.activeTrack]!;
+  }
+
+  setActiveTrack(index: number): void {
+    const i = Math.min(63, Math.max(0, index));
+    if (i === this.state.activeTrack) return;
+    this.state.activeTrack = i;
+    this.emit({ kind: 'seq-settings' });
+    this.syncProgramToTrack();
+  }
+
+  /** Program des aktiven Tracks wird das spielbare Program (wie am Gerät: Pgm-Feld im Main-Screen). */
+  private syncProgramToTrack(): void {
+    const pid = this.activeTrack.programId;
+    if (this.program(pid)) this.setCurrentProgram(pid);
+  }
+
+  /** Program dem aktiven Track zuweisen. */
+  setTrackProgram(programId: string): void {
+    this.updateTrack(this.state.activeTrack, { programId });
+    this.setCurrentProgram(programId);
+  }
+
+  updateSequence(fn: (seq: Sequence) => void): void {
+    fn(this.currentSequence);
+    this.emit({ kind: 'sequence', index: this.state.currentSeq });
+  }
+
+  updateTrack(index: number, patch: Partial<Track>): void {
+    const t = this.currentSequence.tracks[index];
+    if (!t) return;
+    Object.assign(t, patch);
+    this.emit({ kind: 'sequence', index: this.state.currentSeq });
+  }
+
+  updateSeqSettings(patch: Partial<SeqSettings>): void {
+    Object.assign(this.state.seqSettings, patch);
+    this.emit({ kind: 'seq-settings' });
+  }
+
+  setSolo(track: number | null): void {
+    this.state.soloTrack = track;
+    this.emit({ kind: 'seq-settings' });
+  }
+
+  /** Aufgenommene Events aus dem Worklet übernehmen (ohne Rückspiegelung). */
+  applyEngineTrack(seqIndex: number, track: number, events: NoteEvent[], used: boolean): void {
+    const t = this.state.sequences[seqIndex]?.tracks[track];
+    if (!t) return;
+    t.events = events;
+    t.used = used || t.used;
+    this.emit({ kind: 'sequence', index: seqIndex, fromEngine: true });
+  }
+
+  applyEngineBars(seqIndex: number, bars: TimeSig[]): void {
+    const s = this.state.sequences[seqIndex];
+    if (!s) return;
+    s.bars = bars;
+    this.emit({ kind: 'sequence', index: seqIndex, fromEngine: true });
+  }
+
+  // ---------- UNDO SEQ ----------
+
+  /** Vor jeder Aufnahme: Zustand der Sequenz merken. */
+  snapshotForUndo(): void {
+    this.undoSnapshot = { index: this.state.currentSeq, seq: structuredClone(this.currentSequence) };
+    this.undone = false;
+  }
+
+  /** UNDO-SEQ-LED: leuchtet, solange sich die letzte Aufnahme zurücknehmen lässt. */
+  get undoLed(): boolean {
+    return this.undoAvailable && !this.undone;
+  }
+
+  get undoAvailable(): boolean {
+    return this.undoSnapshot !== null && this.undoSnapshot.index === this.state.currentSeq;
+  }
+
+  /** Handbuch: UNDO nimmt die letzte Aufnahme zurück; erneutes Drücken stellt sie wieder her. */
+  undoSeq(): boolean {
+    const snap = this.undoSnapshot;
+    if (!snap || snap.index !== this.state.currentSeq) return false;
+    const now = this.state.sequences[snap.index]!;
+    this.state.sequences[snap.index] = snap.seq;
+    this.undoSnapshot = { index: snap.index, seq: now };
+    this.undone = !this.undone;
+    this.emit({ kind: 'sequence', index: snap.index });
+    return true;
   }
 }

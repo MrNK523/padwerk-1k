@@ -174,11 +174,12 @@ export class Voice {
     this.cutLeft = this.cutTotal;
   }
 
-  render(outL: Float32Array, outR: Float32Array, n: number): void {
+  /** Mischt die Stimme in [from, to) der Ausgabepuffer. */
+  render(outL: Float32Array, outR: Float32Array, from: number, to: number): void {
     if (!this.active || !this.left || !this.right) return;
     const L = this.left;
     const R = this.right;
-    for (let i = 0; i < n; i++) {
+    for (let i = from; i < to; i++) {
       if (this.pos < 0 || this.pos >= this.end) { this.active = false; return; }
       if (!this.released && this.releaseTail > 0) {
         const remaining = this.inc > 0 ? this.end - this.pos : this.pos + 1;
@@ -215,7 +216,40 @@ export function softClip(x: number): number {
   return Math.sign(x) * (0.8 + 0.2 * Math.tanh((a - 0.8) / 0.2));
 }
 
+/** Metronom: kurzer, selbst erzeugter Klick; Akzent höher. Pegel 0–200 (JJOS2XL). */
+class ClickVoice {
+  private phase = 0;
+  private freq = 1000;
+  private gain = 0;
+  private decay = 0.999;
+  private left = 0;
+
+  trigger(accent: boolean, level: number, sr: number): void {
+    this.freq = accent ? 2000 : 1250;
+    this.gain = 0.4 * Math.min(2, Math.max(0, level / 100));
+    this.decay = Math.exp(-1 / (sr * 0.012));
+    this.left = Math.round(sr * 0.06);
+    this.phase = 0;
+    this.sr = sr;
+  }
+
+  private sr = 48000;
+
+  render(outL: Float32Array, outR: Float32Array, from: number, to: number): void {
+    if (this.left <= 0) return;
+    const inc = (2 * Math.PI * this.freq) / this.sr;
+    for (let i = from; i < to && this.left > 0; i++, this.left--) {
+      const s = Math.sin(this.phase) * this.gain;
+      this.phase += inc;
+      this.gain *= this.decay;
+      outL[i]! += s;
+      outR[i]! += s;
+    }
+  }
+}
+
 export class SamplerCore {
+  private readonly click = new ClickVoice();
   readonly voices: Voice[] = Array.from({ length: MAX_VOICES }, () => new Voice());
   private programs = new Map<string, DrumProgram>();
   private samples = new Map<string, SampleData>();
@@ -278,14 +312,36 @@ export class SamplerCore {
     return oldest;
   }
 
+  /** Ganzer Block ohne Zwischenereignisse (Tests, einfache Nutzung). */
   render(outL: Float32Array, outR: Float32Array, n: number): void {
+    this.beginBlock(outL, outR, n);
+    this.renderRange(outL, outR, 0, n);
+    this.endBlock(outL, outR, n);
+  }
+
+  /** Block-Anfang: Puffer leeren. Danach beliebig viele `renderRange`, dazwischen Ereignisse. */
+  beginBlock(outL: Float32Array, outR: Float32Array, n: number): void {
     outL.fill(0, 0, n);
     outR.fill(0, 0, n);
-    for (const v of this.voices) if (v.active) v.render(outL, outR, n);
+  }
+
+  /** Alle aktiven Stimmen in [from, to) mischen – Ereignisse an `from` greifen sample-genau. */
+  renderRange(outL: Float32Array, outR: Float32Array, from: number, to: number): void {
+    if (to <= from) return;
+    for (const v of this.voices) if (v.active) v.render(outL, outR, from, to);
+    this.click.render(outL, outR, from, to);
+  }
+
+  endBlock(outL: Float32Array, outR: Float32Array, n: number): void {
     for (let i = 0; i < n; i++) {
       outL[i] = softClip(outL[i]!);
       outR[i] = softClip(outR[i]!);
     }
     this.frame += n;
+  }
+
+  /** Metronom-Klick (eigener Klang, belegt keine der 32 Stimmen). */
+  triggerClick(accent: boolean, level: number): void {
+    this.click.trigger(accent, level, this.sampleRate);
   }
 }

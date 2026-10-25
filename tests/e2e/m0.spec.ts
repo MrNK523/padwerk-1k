@@ -71,15 +71,15 @@ test('SHIFT rastet per Doppeltipp ein und löst per Tipp', async ({ page }) => {
   await expect(shift).not.toHaveClass(/down/);
 });
 
-test('Display zeigt den Diagnose-Screen', async ({ page }) => {
+test('Display zeigt den Main-Screen', async ({ page }) => {
   await page.goto('/');
   await page.locator('#unlock').click();
-  // Titelzeile: invertiert → oberste Pixelreihe ist überwiegend „an“
-  const onRatio = await page.evaluate(() => {
+  // Bildspeicher enthält Text (Feldbeschriftungen des Main-Screens)
+  const onPixels = await page.evaluate(() => {
     const fb = (window as unknown as { __padwerk: { fb: { get(x: number, y: number): number } } }).__padwerk.fb;
     let on = 0;
-    for (let x = 0; x < 240; x++) on += fb.get(x, 7);
-    return on / 240;
+    for (let y = 0; y < 64; y++) for (let x = 0; x < 240; x++) on += fb.get(x, y);
+    return on;
   });
-  expect(onRatio).toBeGreaterThan(0.9);
+  expect(onPixels).toBeGreaterThan(500);
 });

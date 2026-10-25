@@ -3,7 +3,7 @@ import { velocityFromPosition } from '../../input/velocity';
 import { LCD_H, LCD_W } from '../display/framebuffer';
 
 /** Tasten, die per Doppeltipp einrasten (Latch) – für Ein-Finger-Bedienung von Kombis. */
-export const LATCHABLE: ReadonlySet<ButtonId> = new Set<ButtonId>(['SHIFT', 'ERASE', 'TAP_TEMPO', 'MODE']);
+export const LATCHABLE: ReadonlySet<ButtonId> = new Set<ButtonId>(['SHIFT', 'ERASE', 'TAP_TEMPO', 'MODE', 'REC', 'OVER_DUB', 'UNDO_SEQ']);
 const DOUBLE_TAP_MS = 320;
 const WHEEL_STEP_DEG = 15;
 const DISPLAY_SWIPE_PX = 14;
