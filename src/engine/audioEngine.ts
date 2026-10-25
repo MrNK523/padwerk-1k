@@ -28,7 +28,14 @@ export class AudioEngine {
   private ctx: AudioContext | null = null;
   private node: AudioWorkletNode | null = null;
   private listeners = new Set<Listener>();
+  private readyListeners = new Set<() => void>();
   private starting: Promise<void> | null = null;
+
+  /** Wird aufgerufen, sobald der Worklet-Knoten existiert (für die Erstbefüllung). */
+  onReady(fn: () => void): void {
+    this.readyListeners.add(fn);
+    if (this.node) fn();
+  }
 
   get running(): boolean {
     return this.ctx?.state === 'running' && this.node !== null;
@@ -63,6 +70,7 @@ export class AudioEngine {
         for (const fn of this.listeners) fn(ev.data);
       };
       this.node.connect(this.ctx.destination);
+      for (const fn of this.readyListeners) fn();
     }
     await resumed;
   }
@@ -72,8 +80,14 @@ export class AudioEngine {
     return () => this.listeners.delete(fn);
   }
 
-  send(msg: ToWorklet): void {
-    this.node?.port.postMessage(msg);
+  send(msg: ToWorklet, transfer: Transferable[] = []): void {
+    this.node?.port.postMessage(msg, transfer);
+  }
+
+  /** Audio-Datei dekodieren (MP3 u. a.), Ergebnis in der Rate des Kontexts. */
+  async decode(data: ArrayBuffer): Promise<AudioBuffer> {
+    const ctx = this.ctx ?? new OfflineAudioContext(2, 1, 44100);
+    return ctx.decodeAudioData(data);
   }
 
   latency(): LatencyInfo | null {

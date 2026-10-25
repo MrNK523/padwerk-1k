@@ -14,7 +14,7 @@ Was nicht messbar ist: die Zeit vom Finger auf dem Glas bis zum Pointer-Event (T
 | --- | --- | --- | --- | --- | --- | --- |
 | Headless-Chromium (CI, virtuelles Audio) | Chromium 1.63-Build | 44,1 kHz | 10,0 | 32,0 | – | 2026-10-25 |
 | Surface | Edge/Chrome | | | | | offen |
-| MacBook Pro 16 | Chrome / Safari | | | | | offen |
+| MacBook Pro 16 | (Vorschau im Claude-Artefakt) | – | 5,8 | 32 | – | 2026-10-25 |
 | iPhone | Safari | | | | | offen |
 
 Die CI-Werte stammen aus einer virtuellen Audioumgebung und sagen nichts über echte Geräte aus.

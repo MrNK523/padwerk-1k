@@ -51,6 +51,9 @@ test('Tastatur: Pads, Funktionstasten, Wheel', async ({ page }) => {
   await page.keyboard.press('KeyJ');
   await page.keyboard.press('Digit4');
   expect((await handle(page)).lastPad).toBe('C16');
+  // Wheel-Zähler zeigt der Diagnose-Screen unter OTHER (MODE = Tab, Pad 10 = W)
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('KeyW');
   await page.keyboard.press('PageUp');
   await page.keyboard.press('PageUp');
   expect((await handle(page)).wheel).toBe(2);

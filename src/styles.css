@@ -222,3 +222,18 @@ body {
   .transport .key { font-size: 10px; padding: 4px 2px 6px; }
   .transport .key-sub { display: none; }
 }
+
+/* ---------- M1: Modus-Beschriftung, Blinken, Drag & Drop ---------- */
+.pad-mode {
+  position: absolute; top: 8px; left: 10px; right: 8px;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.12em; color: #5e554c;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: color 120ms;
+}
+.mode-select .pad-mode { color: var(--led); }
+.mode-select .pad { box-shadow: 0 0 0 3px #4a3820, inset 0 2px 1px rgba(255, 255, 255, 0.06), inset 0 -6px 12px rgba(0, 0, 0, 0.5); }
+@keyframes led-blink { 50% { background: #3b2a1c; box-shadow: none; } }
+.key.blink .led { background: var(--led); box-shadow: 0 0 6px var(--led); animation: led-blink 0.5s steps(1) infinite; }
+.device.drop { outline: 3px dashed var(--led); outline-offset: 6px; }
+.device.drop .pad { box-shadow: 0 0 0 3px #4a3820; }
+@media (prefers-reduced-motion: reduce) { .key.blink .led { animation: none; } }

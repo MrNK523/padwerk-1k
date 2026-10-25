@@ -223,6 +223,25 @@ export class Panel {
     for (const b of this.els.buttons.get(id) ?? []) b.classList.toggle('lit', on);
   }
 
+  /** Blinkende LED (MODE wartet auf ein Pad). */
+  setBlink(id: ButtonId, on: boolean): void {
+    for (const b of this.els.buttons.get(id) ?? []) b.classList.toggle('blink', on);
+  }
+
+  /** Modus-Beschriftung über den Pads (wie auf dem Gehäuse aufgedruckt). */
+  setPadLabels(labels: readonly string[]): void {
+    for (const [index, pad] of this.els.pads) {
+      let el = pad.querySelector<HTMLElement>('.pad-mode');
+      if (!el) { el = document.createElement('span'); el.className = 'pad-mode'; pad.append(el); }
+      el.textContent = labels[index] ?? '';
+    }
+  }
+
+  /** Während MODE blinkt, werden die Modus-Beschriftungen hervorgehoben. */
+  showModeLabels(on: boolean): void {
+    this.els.root.classList.toggle('mode-select', on);
+  }
+
   isLatched(id: ButtonId): boolean {
     return this.latched.has(id);
   }

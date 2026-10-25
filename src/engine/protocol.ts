@@ -1,8 +1,14 @@
 /** Nachrichten zwischen Hauptthread und AudioWorklet. */
+import type { NoteVariation } from '../core/levels16';
+import type { DrumProgram } from '../core/model';
 
 export type ToWorklet =
-  | { type: 'padOn'; note: number; velocity: number }
-  | { type: 'padOff'; note: number }
+  | { type: 'sample'; id: string; sampleRate: number; channels: Float32Array[] }
+  | { type: 'sampleRemove'; id: string }
+  | { type: 'program'; program: DrumProgram }
+  | { type: 'programRemove'; id: string }
+  | { type: 'padOn'; programId: string; pad: number; velocity: number; variation?: NoteVariation }
+  | { type: 'padOff'; programId: string; pad: number }
   | { type: 'allSoundOff' }
   | { type: 'measureStart'; threshold: number; timeoutFrames: number }
   | { type: 'statusRequest' };
@@ -18,6 +24,11 @@ export const NOTE_BASE = 36;
 
 export function padToNote(bank: 0 | 1 | 2 | 3, pad: number): number {
   return NOTE_BASE + bank * 16 + pad;
+}
+
+/** Physisches Pad 0–15 + Bank → Pad-Index 0–63 im Program. */
+export function padIndex(bank: 0 | 1 | 2 | 3, pad: number): number {
+  return bank * 16 + pad;
 }
 
 export const PROCESSOR_NAME = 'padwerk-engine';
