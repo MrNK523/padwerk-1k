@@ -6,7 +6,7 @@ import type { FrameBuffer } from '../display/framebuffer';
 import { drawSoftkeys, drawWindowFrame, formatTune, pad2, step, stepEnum, type AppCtx, type Screen } from './screen';
 
 /** Gemeinsame Grundlage: WINDOW schließt jedes Fenster (wie am Gerät). */
-abstract class Window implements Screen {
+export abstract class Window implements Screen {
   abstract readonly id: string;
   constructor(protected ctx: AppCtx) {}
   abstract softkeys(): readonly string[];
@@ -76,7 +76,7 @@ export class LayerWindow extends Window {
   readonly id = 'layer';
   private row = 0;
   private col = 0;
-  private static COLS = ['SAMPLE', 'LEV', 'TUNE', 'V.LO', 'V.HI'] as const;
+  private static COLS = ['SAMPLE', 'CH', 'LEV', 'TUNE', 'V.LO', 'V.HI'] as const;
 
   constructor(ctx: AppCtx, private pad: number) { super(ctx); }
 
@@ -85,13 +85,15 @@ export class LayerWindow extends Window {
   render(fb: FrameBuffer): void {
     const { x, y } = drawWindowFrame(fb, `Layer  Pad ${padName(this.pad)}`);
     const p = this.ctx.store.currentProgram.pads[this.pad]!;
-    fb.text(x, y, '  SAMPLE          LEV TUNE    LO  HI');
+    fb.text(x, y, '  SAMPLE       CH LEV TUNE    LO  HI');
     p.layers.forEach((l, r) => {
       const ry = y + (r + 1) * CELL_H;
-      const name = this.ctx.store.sample(l.sampleId)?.name ?? '(kein)';
+      const m = this.ctx.store.sample(l.sampleId);
+      const name = m?.name ?? '(kein)';
       fb.text(x, ry, `${r + 1}`);
-      const cells = [name.slice(0, 15).padEnd(15), String(l.level).padStart(3), formatTune(l.tune), String(l.rangeLo).padStart(3), String(l.rangeHi).padStart(3)];
-      const xs = [2, 18, 22, 29, 33];
+      const chop = m?.chopOn && l.chop > 0 ? pad2(l.chop) : '--';
+      const cells = [name.slice(0, 12).padEnd(12), chop, String(l.level).padStart(3), formatTune(l.tune), String(l.rangeLo).padStart(3), String(l.rangeHi).padStart(3)];
+      const xs = [2, 15, 18, 22, 29, 33];
       cells.forEach((c, ci) => fb.text(x + xs[ci]! * CELL_W, ry, c, r === this.row && ci === this.col));
     });
     drawSoftkeys(fb, this.softkeys());
@@ -109,6 +111,11 @@ export class LayerWindow extends Window {
           const list = [null, ...store.samplesSorted().map((s) => s.id)];
           const i = Math.max(0, list.indexOf(l.sampleId));
           store.updateLayer(pid, this.pad, layer, { sampleId: list[Math.min(list.length - 1, Math.max(0, i + e.delta))] ?? null });
+          break;
+        }
+        case 'CH': {
+          const m = store.sample(l.sampleId);
+          if (m?.chopOn) store.updateLayer(pid, this.pad, layer, { chop: step(l.chop, e.delta, 0, m.chops.length) });
           break;
         }
         case 'LEV': store.updateLayer(pid, this.pad, layer, { level: step(l.level, d, 0, 100) }); break;

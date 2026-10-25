@@ -11,6 +11,7 @@ import { makeStarterKit, KIT_RATE } from '../dsp/kit';
 import { AudioEngine } from '../engine/audioEngine';
 import { syncEngine } from '../engine/engineSync';
 import type { TransportCmd } from '../engine/protocol';
+import type { PlayRegion } from '../dsp/sampler';
 import { HwBus, type ButtonId, type HwEvent } from '../input/events';
 import { attachKeyboard } from '../input/keyboardInput';
 import { ACCEPTED_AUDIO, importAudio, rootNoteFromName } from '../io/importAudio';
@@ -20,10 +21,14 @@ import { LcdRenderer } from './display/lcdRenderer';
 import { Panel } from './panel/panel';
 import { DiagScreen, initialDiagState, type DiagState } from './screens/diagScreen';
 import { ProgramScreen } from './screens/programScreen';
+import { TrimScreen } from './screens/trimScreen';
 import { type AppCtx, type Screen, type UiState } from './screens/screen';
 import { MainScreen, type TransportView } from './screens/mainScreen';
 import { LoadScreen, MODE_PADS, ModeSelectOverlay, PlaceholderScreen } from './screens/simpleScreens';
 import { AssignToPadWindow, Levels16Window } from './screens/windows';
+
+/** Interne Sample-ID für das Vorhören von Bearbeitungen (nie im Store) */
+const PREVIEW_ID = '__preview';
 
 const BANK_OF: Partial<Record<ButtonId, 0 | 1 | 2 | 3>> = { BANK_A: 0, BANK_B: 1, BANK_C: 2, BANK_D: 3 };
 
@@ -78,6 +83,7 @@ export class App implements AppCtx {
     this.screens = {
       main,
       program: new ProgramScreen(this),
+      trim: new TrimScreen(this),
       load: new LoadScreen(this, this.loadOpts),
       other: new DiagScreen(this.diag, { measure: () => void this.measure(), allSoundOff: () => this.engine.send({ type: 'allSoundOff' }) }),
       modeSelect: new ModeSelectOverlay(),
@@ -143,6 +149,18 @@ export class App implements AppCtx {
     this.engine.send({ type: 'padOff', programId: this.store.currentProgram.id, pad });
   }
 
+  audition(sampleId: string, region: PlayRegion, opts: { gate: boolean; reverse: boolean; velocity: number }): void {
+    this.engine.send({ type: 'audition', sampleId, region, ...opts });
+  }
+
+  auditionOff(cut = false): void { this.engine.send({ type: 'auditionOff', cut }); }
+
+  previewAudio(channels: Float32Array[], sampleRate: number): void {
+    const copy = channels.map((c) => c.slice());
+    this.engine.send({ type: 'sample', id: PREVIEW_ID, sampleRate, channels: copy }, copy.map((c) => c.buffer));
+    this.engine.send({ type: 'audition', sampleId: PREVIEW_ID, region: { start: 0, end: copy[0]?.length ?? 0 }, gate: false, reverse: false, velocity: 127 });
+  }
+
   // ---------- Modi ----------
 
   setMode(id: string): void {
@@ -154,7 +172,7 @@ export class App implements AppCtx {
 
   private modeFromPad(pad: number): void {
     const m = MODE_PADS[pad]!;
-    const id = { 1: 'load', 6: 'program', 9: 'other' }[pad];
+    const id = { 1: 'load', 5: 'trim', 6: 'program', 9: 'other' }[pad];
     if (id) this.setMode(id);
     else {
       this.screens[`ph${pad}`] ??= new PlaceholderScreen(`ph${pad}`, m.name, m.milestone);
@@ -531,6 +549,8 @@ export class App implements AppCtx {
   touch(): void { this.dirty = true; }
 
   private loop = (): void => {
+    const top = this.windows.at(-1) ?? this.screen;
+    if (top.animating?.() || (this.windows.length && this.screen.animating?.())) this.dirty = true;
     if (this.dirty) {
       this.dirty = false;
       this.updateLeds();

@@ -3,7 +3,7 @@
 Pad-Sampler und Sequencer im Browser – inspiriert von klassischen Pad-Samplern mit Community-Betriebssystem.
 Eigener Name, eigener Code, eigene Gestaltung; keine Marken, Firmware, Samples, Grafiken oder Schriften Dritter.
 
-**Stand: M2 – Sequencer.** Architektur und Meilensteinplan: siehe Architektur-Dokument (Claude-Doc „Padwerk 1K – Architektur & Meilensteinplan“).
+**Stand: M3 – Sample-Bearbeitung (TRIM, Loop, Chop, Edit).** Architektur und Meilensteinplan: siehe Architektur-Dokument (Claude-Doc „Padwerk 1K – Architektur & Meilensteinplan“).
 
 ## Entwickeln
 
@@ -21,7 +21,7 @@ npm run icons        # App-Icons aus public/icons/icon.svg rendern
 | Ordner | Inhalt |
 | --- | --- |
 | `src/core/` | Sequencer, Timing, Datenmodell – ohne Browser (ab M2) |
-| `src/dsp/` | Stimmen-Pool, später Filter, Hüllkurven, Chop |
+| `src/dsp/` | Stimmen, Filter, Hüllkurven, Loop/Chop-Wiedergabe, Sample-Bearbeitung |
 | `src/engine/` | AudioWorklet-Prozessor und Brücke zum Hauptthread |
 | `src/state/` | Store, Befehle, Undo, Speicherung (ab M1) |
 | `src/ui/display/` | 240×64-Bildspeicher, eigene Pixelschrift, LCD-Renderer |

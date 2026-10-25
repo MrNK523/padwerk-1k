@@ -4,7 +4,7 @@
  */
 import { layersFor, padsToCut, simultTargets } from '../core/padLogic';
 import type { NoteVariation } from '../core/levels16';
-import type { DrumProgram, Layer, PadParams } from '../core/model';
+import { defaultPad, type DrumProgram, type Layer, type LoopMode, type PadParams, type SamplePlayback } from '../core/model';
 import { Adsr } from './envelope';
 import { Svf } from './filter';
 import {
@@ -15,6 +15,36 @@ import { MAX_VOICES } from './voicePool';
 export interface SampleData {
   channels: Float32Array[];
   sampleRate: number;
+  /** Start/Ende/Loop/Chops aus TRIM; fehlt → ganzes Sample */
+  play?: SamplePlayback;
+}
+
+/** Abspielbereich einer Stimme in Quell-Frames; `loop` nur bei NOTE ON. */
+export interface PlayRegion {
+  start: number;
+  end: number;
+  loop?: { point: number; mode: LoopMode };
+}
+
+/**
+ * ANNAHME A-23: Crossfade-Loop blendet über 100 ms (bzw. weniger, wenn vor dem Loop-Punkt nicht genug
+ * Material liegt). Loops bis 100 ms laufen wie FWD (Handbuch: „short loop of 100mSEC or less cannot carry out cross fade“).
+ */
+export const XFADE_MS = 100;
+
+/**
+ * Bereich aus TRIM-Einstellungen und Layer-Chop bestimmen.
+ * Chop: Chop-Bereich, ohne Loop. Sonst Start–Ende; Loop nur bei NOTE ON (Handbuch S. 65).
+ */
+export function resolveRegion(sample: SampleData, layer: Layer, noteOn: boolean): PlayRegion {
+  const frames = sample.channels[0]?.length ?? 0;
+  const p = sample.play;
+  if (!p) return { start: 0, end: frames };
+  const chop = layer.chop > 0 && p.chopOn ? p.chops[layer.chop - 1] : undefined;
+  if (chop) return { start: chop.start, end: chop.end };
+  const r: PlayRegion = { start: p.start, end: p.end };
+  if (p.loopOn && noteOn && p.loopPoint < p.end) r.loop = { point: p.loopPoint, mode: p.loopMode };
+  return r;
 }
 
 /** Kurzer Ausblender beim Abschneiden (Mute-Gruppe, Mono, Stealing) gegen Knackser. */
@@ -48,7 +78,12 @@ export class Voice {
   private mixLR = false;
   private pos = 0;
   private inc = 1;
+  private regStart = 0;
   private end = 0;
+  private loopOn = false;
+  private loopPoint = 0;
+  private loopMode: LoopMode = 'FWD';
+  private xfade = 0;
   private gainL = 1;
   private gainR = 1;
   private readonly amp = new Adsr();
@@ -70,7 +105,7 @@ export class Voice {
 
   start(args: {
     frame: number; programId: string; pad: number; params: PadParams; layer: Layer; sample: SampleData;
-    velocity: number; variation: NoteVariation; sampleRate: number;
+    velocity: number; variation: NoteVariation; sampleRate: number; region?: PlayRegion;
   }): void {
     const { params: p, layer, sample, variation: v, sampleRate } = args;
     this.sr = sampleRate;
@@ -91,9 +126,22 @@ export class Voice {
     const frames = ch0.length;
     const ratio = (sample.sampleRate / sampleRate) * semitonesToRatio(layer.tune + (v.tune ?? 0));
     const rev = layer.dir === 'REV';
+    const reg = args.region ?? resolveRegion(sample, layer, p.playMode === 'NOTE_ON');
+    this.regStart = Math.max(0, Math.min(frames, reg.start));
+    this.end = Math.max(this.regStart, Math.min(frames, reg.end));
+    if (this.end - this.regStart < 1) { this.active = false; return; }
     this.inc = rev ? -ratio : ratio;
-    this.pos = rev ? frames - 1 : 0;
-    this.end = frames;
+    this.pos = rev ? this.end - 1 : this.regStart;
+    // ANNAHME A-24: REV spielt den Bereich rückwärts, ohne Loop
+    this.loopOn = !!reg.loop && !rev && reg.loop.point < this.end && reg.loop.point >= this.regStart;
+    this.loopPoint = reg.loop?.point ?? 0;
+    this.loopMode = reg.loop?.mode ?? 'FWD';
+    this.xfade = 0;
+    if (this.loopOn && this.loopMode === 'XFADE') {
+      const len = this.end - this.loopPoint;
+      const x = Math.min((XFADE_MS / 1000) * sample.sampleRate, len / 2, this.loopPoint);
+      if (len > (XFADE_MS / 1000) * sample.sampleRate && x >= 1) this.xfade = x;
+    }
 
     const velocity = v.velocity ?? args.velocity;
     const g = levelGain(layer.level) * levelGain(p.mixLevel) * veloGain(p.velo, velocity);
@@ -115,7 +163,7 @@ export class Voice {
     // ONE SHOT: Release blendet zum Sample-Ende hin aus (JJOS2XL: „Release works“ bei ONE SHOT)
     // Ausblendlänge in Sample-Frames der Quelle (berücksichtigt Tonhöhe)
     const relSrcFrames = p.amp.release > 0 ? (decayMs(p.amp.release) / 1000) * sampleRate * ratio : 0;
-    this.releaseTail = this.oneShot ? relSrcFrames : 0;
+    this.releaseTail = this.oneShot && !this.loopOn ? relSrcFrames : 0;
 
     this.setupFilter(p, velocity, v);
   }
@@ -159,6 +207,23 @@ export class Voice {
     this.svfR.setParams(hz, this.filterQ, this.sr);
   }
 
+  /** Loop-Grenzen: FWD/XFADE springen zum Loop-Punkt, ALT kehrt die Richtung um. */
+  private wrapLoop(): void {
+    const len = this.end - this.loopPoint;
+    if (this.loopMode === 'ALT') {
+      // erster Durchlauf ab Start bleibt unberührt; danach Spiegelung an Ende bzw. Loop-Punkt
+      if (this.inc > 0 && this.pos >= this.end) {
+        this.pos = Math.max(this.loopPoint, 2 * (this.end - 1) - this.pos);
+        this.inc = -this.inc;
+      } else if (this.inc < 0 && this.pos < this.loopPoint) {
+        this.pos = Math.min(this.end - 1, 2 * this.loopPoint - this.pos);
+        this.inc = -this.inc;
+      }
+      return;
+    }
+    while (this.pos >= this.end) this.pos -= len;
+  }
+
   /** Pad losgelassen (wirkt nur bei NOTE ON). */
   noteOff(): void {
     if (!this.active || this.oneShot || this.released) return;
@@ -180,9 +245,10 @@ export class Voice {
     const L = this.left;
     const R = this.right;
     for (let i = from; i < to; i++) {
-      if (this.pos < 0 || this.pos >= this.end) { this.active = false; return; }
+      if (this.loopOn) this.wrapLoop();
+      else if (this.pos < this.regStart || this.pos >= this.end) { this.active = false; return; }
       if (!this.released && this.releaseTail > 0) {
-        const remaining = this.inc > 0 ? this.end - this.pos : this.pos + 1;
+        const remaining = this.inc > 0 ? this.end - this.pos : this.pos + 1 - this.regStart;
         if (remaining <= this.releaseTail) { this.released = true; this.amp.release(); }
       }
       let env = this.amp.next();
@@ -193,6 +259,15 @@ export class Voice {
       }
       let l = readAt(L, this.pos);
       let r = L === R ? l : readAt(R, this.pos);
+      if (this.xfade > 0 && this.pos >= this.end - this.xfade) {
+        // Crossfade: Loop-Ende in den Bereich vor dem Loop-Punkt überblenden (gleiche Phase nach dem Sprung)
+        const t = (this.pos - (this.end - this.xfade)) / this.xfade;
+        const back = this.pos - (this.end - this.loopPoint);
+        const lb = readAt(L, back);
+        const rb = L === R ? lb : readAt(R, back);
+        l = l * (1 - t) + lb * t;
+        r = r * (1 - t) + rb * t;
+      }
       if (this.mixLR) { l = r = (l + r) * 0.5; }
       if (this.filterOn) {
         if (this.filterAmount !== 0) {
@@ -260,6 +335,10 @@ export class SamplerCore {
   setProgram(p: DrumProgram): void { this.programs.set(p.id, p); }
   removeProgram(id: string): void { this.programs.delete(id); }
   setSample(id: string, s: SampleData): void { this.samples.set(id, s); }
+  setSamplePlay(id: string, play: SamplePlayback): void {
+    const s = this.samples.get(id);
+    if (s) s.play = play;
+  }
   removeSample(id: string): void {
     this.samples.delete(id);
     for (const v of this.voices) if (v.active) v.cut();
@@ -268,7 +347,7 @@ export class SamplerCore {
   get activeVoices(): number {
     let n = 0;
     for (const v of this.voices) if (v.active) n++;
-    return n;
+    return n + (this.auditionVoice.active ? 1 : 0);
   }
 
   padOn(programId: string, pad: number, velocity: number, variation: NoteVariation = {}, depth = 0): void {
@@ -296,7 +375,32 @@ export class SamplerCore {
 
   allSoundOff(): void {
     for (const v of this.voices) v.cut();
+    this.auditionVoice.cut();
   }
+
+  private readonly auditionVoice = new Voice();
+
+  /**
+   * Vorhören im TRIM-Modus (Pads 1–16): Bereich direkt, ohne Program.
+   * `gate` = NOTE ON (klingt, solange gehalten), sonst ONE SHOT bis zum Bereichsende.
+   */
+  audition(sampleId: string, region: PlayRegion, opts: { gate: boolean; reverse: boolean; velocity: number }): void {
+    const sample = this.samples.get(sampleId);
+    if (!sample) return;
+    this.auditionVoice.cut();
+    const params = defaultPad();
+    params.playMode = opts.gate ? 'NOTE_ON' : 'ONE_SHOT';
+    params.velo = 100; // Vorhören immer mit vollem Pegel (ANNAHME A-25)
+    const layer: Layer = { sampleId, level: 100, tune: 0, dir: opts.reverse ? 'REV' : 'FOR', sound: 'ST', rangeLo: 0, rangeHi: 127, chop: 0 };
+    this.auditionVoice.start({
+      frame: this.frame, programId: '', pad: -1, params, layer, sample, velocity: opts.velocity, variation: {},
+      sampleRate: this.sampleRate, region,
+    });
+  }
+
+  /** Gate loslassen; `cut` = sofort stumm (STOP) */
+  auditionOff(cut = false): void { if (cut) this.auditionVoice.cut(); else this.auditionVoice.noteOff(); }
+  get auditioning(): boolean { return this.auditionVoice.active; }
 
   private cutPad(programId: string, pad: number): void {
     for (const v of this.voices) if (v.active && v.programId === programId && v.pad === pad) v.cut();
@@ -329,6 +433,7 @@ export class SamplerCore {
   renderRange(outL: Float32Array, outR: Float32Array, from: number, to: number): void {
     if (to <= from) return;
     for (const v of this.voices) if (v.active) v.render(outL, outR, from, to);
+    if (this.auditionVoice.active) this.auditionVoice.render(outL, outR, from, to);
     this.click.render(outL, outR, from, to);
   }
 

@@ -44,3 +44,14 @@ Belegung nach physischer Taste – gleich auf deutscher und englischer Tastatur.
 | Note Repeat | T halten + Pad halten; T halten + F1–F6 wählt das Raster |
 | Track wechseln | Tab (MODE) halten + Bild ↑/↓ |
 | UNDO SEQ | U |
+
+## TRIM-Modus (Tab + 6 bzw. MODE + PAD 6)
+| Funktion | Tasten |
+| --- | --- |
+| Feld wählen | ← / →; ↓ von der oberen Zeile in die untere, Shift + ↑ nach oben |
+| Wellenform zoomen | [ / ] (BAR) oder Shift + ← / → |
+| Pegel-Zoom | ↑ / ↓ (in der unteren Zeile) |
+| Punkt verschieben | Bild ↑ / ↓; mit Shift oder T zehnfach |
+| Fine-/Joint-Fenster | Enter (WINDOW) auf St, Lp oder End |
+| Vorhören | Pads: Z X C V = PAD 1–4 (gehalten), A S D F = PAD 5–8, Q W E R = PAD 9–12, 1–4 = PAD 13–16 |
+| Edit-Funktionen direkt | Shift + F1–F6 bzw. Shift + 7 8 9 0 - = |

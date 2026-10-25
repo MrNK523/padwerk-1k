@@ -42,7 +42,10 @@ export class EngineCore {
     const s = this.sampler;
     const q = this.seq;
     switch (msg.type) {
-      case 'sample': s.setSample(msg.id, { channels: msg.channels, sampleRate: msg.sampleRate }); break;
+      case 'sample': s.setSample(msg.id, { channels: msg.channels, sampleRate: msg.sampleRate, play: msg.play }); break;
+      case 'sampleMeta': s.setSamplePlay(msg.id, msg.play); break;
+      case 'audition': s.audition(msg.sampleId, msg.region, { gate: msg.gate, reverse: msg.reverse, velocity: msg.velocity }); break;
+      case 'auditionOff': s.auditionOff(msg.cut); break;
       case 'sampleRemove': s.removeSample(msg.id); break;
       case 'program': s.setProgram(msg.program); break;
       case 'programRemove': s.removeProgram(msg.id); break;

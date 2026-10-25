@@ -15,7 +15,28 @@ export type SoundMode = 'L+R' | 'L' | 'R' | 'ST';
 export type FilterType = 'OFF' | 'LPF' | 'BPF' | 'HPF' | 'EQL' | 'EQH';
 export type MuteMode = 'MUTE' | 'SIMULT1' | 'SIMULT2';
 
-export interface SampleMeta {
+export type LoopMode = 'FWD' | 'ALT' | 'XFADE';
+export const MAX_CHOPS = 32; // JJOS2XL: Chop1–Chop32 (nicht-destruktiv)
+export const MAX_REGIONS = 64; // JJOS2XL: destruktives Teilen bis 64 Regionen
+
+export interface Region { start: number; end: number }
+
+/** Wiedergabe-Einstellungen eines Samples (TRIM-Modus); Positionen in Sample-Frames. */
+export interface SamplePlayback {
+  start: number;
+  end: number;
+  loopOn: boolean;
+  loopPoint: number;
+  loopMode: LoopMode;
+  /** Loop-Punkt folgt dem Startpunkt (Schloss-Symbol im JJOS2XL-Loop-Feld) */
+  loopLock: boolean;
+  /** Non-Destructive Chop (JJOS2XL) an/aus */
+  chopOn: boolean;
+  /** bis zu 32 Chops; Pads A01–B16 entsprechen Chop1–Chop32 */
+  chops: Region[];
+}
+
+export interface SampleMeta extends SamplePlayback {
   id: string;
   name: string;
   sampleRate: number;
@@ -23,6 +44,28 @@ export interface SampleMeta {
   frames: number;
   /** Grundton des Samples (MIDI-Note); JJOS2XL-Standard C_3 = 60. */
   rootNote: number;
+}
+
+export function defaultPlayback(frames: number): SamplePlayback {
+  return { start: 0, end: frames, loopOn: false, loopPoint: 0, loopMode: 'FWD', loopLock: false, chopOn: false, chops: [] };
+}
+
+/** Gleichmäßige Chops zwischen start und end (JJOS2XL: beim Einschalten 32 gleiche Teile). */
+export function equalChops(start: number, end: number, count = MAX_CHOPS): Region[] {
+  const n = Math.max(1, Math.min(MAX_CHOPS, Math.round(count)));
+  const len = end - start;
+  return Array.from({ length: n }, (_, i) => ({ start: Math.round(start + (len * i) / n), end: Math.round(start + (len * (i + 1)) / n) }));
+}
+
+/** Wiedergabe-Werte an eine neue Länge anpassen (nach destruktiver Bearbeitung). */
+export function clampPlayback(p: SamplePlayback, frames: number): SamplePlayback {
+  const c = (v: number) => Math.max(0, Math.min(frames, Math.round(v)));
+  const start = c(p.start);
+  const end = Math.max(start, c(p.end));
+  return {
+    ...p, start, end, loopPoint: Math.min(end, Math.max(start, c(p.loopPoint))),
+    chops: p.chops.map((r) => ({ start: c(r.start), end: Math.max(c(r.start), c(r.end)) })),
+  };
 }
 
 export interface Layer {
@@ -37,6 +80,8 @@ export interface Layer {
   /** Velocity-Bereich, in dem der Layer klingt (0–127). */
   rangeLo: number;
   rangeHi: number;
+  /** Chop-Nummer 1–32 bei Sample mit Chop ON; 0 = ganzes Sample (Start/Ende aus TRIM) */
+  chop: number;
 }
 
 export interface Envelope {
@@ -86,7 +131,7 @@ export interface DrumProgram {
 }
 
 export const emptyLayer = (rangeLo = 0, rangeHi = 127): Layer => ({
-  sampleId: null, level: 100, tune: 0, dir: 'FOR', sound: 'ST', rangeLo, rangeHi,
+  sampleId: null, level: 100, tune: 0, dir: 'FOR', sound: 'ST', rangeLo, rangeHi, chop: 0,
 });
 
 export function defaultPad(): PadParams {

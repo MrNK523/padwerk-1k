@@ -1,6 +1,6 @@
 import {
-  type DrumProgram, type Layer, type PadParams, type SampleMeta,
-  MAX_PROGRAMS, newDrumProgram, sanitizeName, uniqueName,
+  type DrumProgram, type Layer, type PadParams, type SampleMeta, type SamplePlayback,
+  MAX_PROGRAMS, clampPlayback, defaultPlayback, newDrumProgram, sanitizeName, uniqueName,
 } from '../core/model';
 import { MAX_SEQUENCES, newSequence, type NoteEvent, type Sequence, type TimeSig, type Track } from '../core/sequence';
 import { defaultSeqSettings, type SeqSettings } from '../core/sequencerCore';
@@ -14,6 +14,8 @@ export interface SampleAudio {
 
 export type Change =
   | { kind: 'sample'; id: string; removed?: boolean }
+  /** nur Wiedergabe-Einstellungen (Start/Ende/Loop/Chops) geändert – Audiodaten unverändert */
+  | { kind: 'sample-meta'; id: string }
   | { kind: 'program'; id: string; removed?: boolean }
   | { kind: 'current-program'; id: string }
   /** `fromEngine` = Änderung kam aus dem Worklet (Aufnahme) und muss nicht zurückgespiegelt werden */
@@ -74,21 +76,75 @@ export class Store {
   // ---------- Samples ----------
 
   /** Fügt ein Sample hinzu; der Name wird gekürzt und eindeutig gemacht. */
-  addSample(rawName: string, audio: SampleAudio, rootNote = 60): SampleMeta {
+  addSample(rawName: string, audio: SampleAudio, rootNote = 60, playback?: SamplePlayback): SampleMeta {
     const name = uniqueName(sanitizeName(rawName), this.state.samples.map((s) => s.name));
     const ch = audio.channels.slice(0, 2);
+    const frames = ch[0]?.length ?? 0;
     const meta: SampleMeta = {
       id: this.id('s'),
       name,
       sampleRate: audio.sampleRate,
       channels: ch.length === 2 ? 2 : 1,
-      frames: ch[0]?.length ?? 0,
+      frames,
       rootNote,
+      ...(playback ? clampPlayback(playback, frames) : defaultPlayback(frames)),
     };
     this.audio.set(meta.id, { channels: ch, sampleRate: audio.sampleRate });
     this.state.samples.push(meta);
     this.emit({ kind: 'sample', id: meta.id });
     return meta;
+  }
+
+  /** Start/Ende/Loop/Chops ändern (TRIM). Werte werden auf die Sample-Länge begrenzt. */
+  updateSampleMeta(id: string, patch: Partial<SamplePlayback>): void {
+    const m = this.sample(id);
+    if (!m) return;
+    Object.assign(m, clampPlayback({ ...m, ...patch }, m.frames));
+    this.emit({ kind: 'sample-meta', id });
+  }
+
+  /** Audiodaten ersetzen (destruktive Bearbeitung, OVER W). */
+  replaceSampleAudio(id: string, channels: Float32Array[], playback?: Partial<SamplePlayback>): void {
+    const m = this.sample(id);
+    const a = this.audio.get(id);
+    if (!m || !a) return;
+    const ch = channels.slice(0, 2);
+    a.channels = ch;
+    m.frames = ch[0]?.length ?? 0;
+    m.channels = ch.length === 2 ? 2 : 1;
+    Object.assign(m, clampPlayback({ ...m, ...playback }, m.frames));
+    this.emit({ kind: 'sample', id });
+  }
+
+  renameSample(id: string, raw: string): void {
+    const m = this.sample(id);
+    if (!m) return;
+    m.name = uniqueName(sanitizeName(raw), this.state.samples.filter((s) => s.id !== id).map((s) => s.name));
+    this.emit({ kind: 'sample-meta', id });
+  }
+
+  /** Sample löschen; Pads, die es nutzen, werden leer (wie am Gerät). */
+  removeSample(id: string): void {
+    const i = this.state.samples.findIndex((s) => s.id === id);
+    if (i < 0) return;
+    this.state.samples.splice(i, 1);
+    this.audio.delete(id);
+    for (const p of this.state.programs) {
+      let used = false;
+      for (const pad of p.pads) for (const l of pad.layers) if (l.sampleId === id) { l.sampleId = null; l.chop = 0; used = true; }
+      if (used) this.emit({ kind: 'program', id: p.id });
+    }
+    this.emit({ kind: 'sample', id, removed: true });
+  }
+
+  /** Kopie mit eigenem Namen (Sample-Fenster COPY). */
+  copySample(id: string, rawName: string): SampleMeta | undefined {
+    const m = this.sample(id);
+    const a = this.audio.get(id);
+    if (!m || !a) return undefined;
+    const { start, end, loopOn, loopPoint, loopMode, loopLock, chopOn, chops } = m;
+    return this.addSample(rawName, { channels: a.channels.map((c) => c.slice()), sampleRate: a.sampleRate }, m.rootNote,
+      { start, end, loopOn, loopPoint, loopMode, loopLock, chopOn, chops: chops.map((r) => ({ ...r })) });
   }
 
   sample(id: string | null): SampleMeta | undefined {

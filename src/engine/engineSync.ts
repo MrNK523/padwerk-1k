@@ -8,6 +8,7 @@ import type { AudioEngine } from './audioEngine';
  */
 export function syncEngine(store: Store, engine: AudioEngine): void {
   const pendingPrograms = new Set<string>();
+  const pendingMeta = new Set<string>();
   let pendingSequence = false;
   let pendingSettings = false;
   let scheduled = false;
@@ -17,7 +18,13 @@ export function syncEngine(store: Store, engine: AudioEngine): void {
     if (!audio) return;
     // Kopie übertragen – der Hauptthread behält seine Daten (Wellenform, Speichern)
     const channels = audio.channels.map((c) => c.slice());
-    engine.send({ type: 'sample', id, sampleRate: audio.sampleRate, channels }, channels.map((c) => c.buffer));
+    engine.send({ type: 'sample', id, sampleRate: audio.sampleRate, channels, play: playOf(id) }, channels.map((c) => c.buffer));
+  };
+  const playOf = (id: string) => {
+    const m = store.sample(id);
+    if (!m) return undefined;
+    const { start, end, loopOn, loopPoint, loopMode, loopLock, chopOn, chops } = m;
+    return { start, end, loopOn, loopPoint, loopMode, loopLock, chopOn, chops: chops.map((r) => ({ ...r })) };
   };
   const sendProgram = (id: string) => {
     const p = store.program(id);
@@ -32,6 +39,8 @@ export function syncEngine(store: Store, engine: AudioEngine): void {
     scheduled = false;
     for (const id of pendingPrograms) sendProgram(id);
     pendingPrograms.clear();
+    for (const id of pendingMeta) { const play = playOf(id); if (play) engine.send({ type: 'sampleMeta', id, play }); }
+    pendingMeta.clear();
     if (pendingSequence) sendSequence();
     if (pendingSettings) sendSettings();
     pendingSequence = pendingSettings = false;
@@ -50,6 +59,10 @@ export function syncEngine(store: Store, engine: AudioEngine): void {
     switch (c.kind) {
       case 'sample':
         if (c.removed) engine.send({ type: 'sampleRemove', id: c.id }); else sendSample(c.id);
+        break;
+      case 'sample-meta':
+        pendingMeta.add(c.id);
+        schedule();
         break;
       case 'program':
         if (c.removed) { engine.send({ type: 'programRemove', id: c.id }); return; }

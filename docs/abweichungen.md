@@ -28,3 +28,12 @@ Stellen, an denen Padwerk 1K bewusst oder zwangsläufig anders arbeitet als ein 
 | D-22 | Sequenz wechseln nur im Stillstand; Next Sequence folgt | Meilensteinplan (M5) | M2 |
 | D-23 | Keine Latenzkompensation für Live-Aufnahmen: Anschläge landen am Beginn des nächsten Audioblocks (≤ 2,7 ms) plus Eingabeverzögerung des Geräts | Browser | M2 |
 | D-24 | Tempo per Wheel in 1er-Schritten, mit SHIFT in 0,1er-Schritten | Bedienhilfe | M2 |
+| D-25 | Wheel im TRIM bewegt Punkte um einen Bildpunkt der aktuellen Zoomstufe (mit SHIFT/TAP ×10) statt um einen Sample-Punkt mit Stellenwahl; im Fine-Fenster entsprechend feiner. Zifferneingabe mit NUMERIC folgt | Bedienhilfe; Zifferneingabe in M4 | M3 |
+| D-26 | Wellenform zeigt immer den linken Kanal (kein View-Feld L/R); keine LOG-Ansicht, stattdessen Pegel-Zoom mit ▲ ▼ (wie JJOS2XL) | Platz im Display | M3 |
+| D-27 | Kein Tune-Feld je Sample (Tonhöhe nur im Program je Layer) | Meilensteinplan (M9 mit PITCH) | M3 |
+| D-28 | Kein Q1/Q2-Slider für Start/Ende/Loop (AFTER-Taste) | Meilensteinplan (M5 Q-Link) | M3 |
+| D-29 | TIME STRETCH, PATCHED PHRASE und Pitch Shift fehlen im Edit-Fenster | Meilensteinplan (M10) | M3 |
+| D-30 | Spielmodus LOOP&HOLD (JJOS2XL) fehlt noch | Meilensteinplan (M5) | M3 |
+| D-31 | Namenseingabe nur mit Wheel und Cursor (plus ENTF/EINF); keine Eingabe über Pads/NUMERIC und keine Computertastatur | Bedienhilfe folgt mit M4 | M3 |
+| D-32 | „Convert X-fade to Normal loop“ (F5 X to) fehlt; Crossfade-Loops kosten keine zusätzlichen Stimmen | kein Stimmenlimit nötig | M3 |
+| D-33 | Sample-Fenster (WINDOW im Sample-Feld) vereint Liste, LÖSCH., NAME und KOPIE; „alle löschen“ fehlt | Bedienhilfe | M3 |

@@ -83,8 +83,9 @@ export class ProgramScreen implements Screen {
       case 'SAMPLE': return [
         padCol,
         {
-          label: 'SAMPLE', width: 16,
-          text: (p) => (s.sample(p.layers[0].sampleId)?.name ?? '').padEnd(16),
+          // JJOS2XL zeigt bei Chop-Samples zusätzlich die Chop-Nummer; 13 Zeichen + CHP passen in 40 Spalten
+          label: 'SAMPLE', width: 13,
+          text: (p) => (s.sample(p.layers[0].sampleId)?.name ?? '').padEnd(13),
           wheel: (pad, _d, raw) => {
             const list = [null, ...s.samplesSorted().map((x) => x.id)];
             const cur = s.currentProgram.pads[pad]!.layers[0].sampleId;
@@ -92,7 +93,21 @@ export class ProgramScreen implements Screen {
             l0(pad, { sampleId: list[Math.min(list.length - 1, Math.max(0, i + raw))] ?? null });
           },
           window: (pad) => new SampleListWindow(this.ctx, s.currentProgram.pads[pad]!.layers[0].sampleId, (id) => l0(pad, { sampleId: id })),
-          copy: (from, to) => l0(to, { sampleId: from.layers[0].sampleId }),
+          copy: (from, to) => l0(to, { sampleId: from.layers[0].sampleId, chop: from.layers[0].chop }),
+        },
+        {
+          label: 'CH', width: 2, right: true,
+          text: (p) => {
+            const m = s.sample(p.layers[0].sampleId);
+            return m?.chopOn && p.layers[0].chop > 0 ? String(p.layers[0].chop).padStart(2, '0') : '--';
+          },
+          wheel: (pad, _d, raw) => {
+            const l = s.currentProgram.pads[pad]!.layers[0];
+            const m = s.sample(l.sampleId);
+            if (!m?.chopOn) return;
+            l0(pad, { chop: step(l.chop, raw, 0, m.chops.length) });
+          },
+          copy: (from, to) => l0(to, { chop: from.layers[0].chop }),
         },
         {
           label: 'SND', width: 3,

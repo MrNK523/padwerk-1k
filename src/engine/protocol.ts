@@ -1,6 +1,7 @@
 /** Nachrichten zwischen Hauptthread und AudioWorklet. */
 import type { NoteVariation } from '../core/levels16';
-import type { DrumProgram } from '../core/model';
+import type { DrumProgram, SamplePlayback } from '../core/model';
+import type { PlayRegion } from '../dsp/sampler';
 import type { NoteEvent, Sequence, TimeSig } from '../core/sequence';
 import type { RecMode, SeqSettings, TransportState } from '../core/sequencerCore';
 
@@ -16,7 +17,11 @@ export type TransportCmd =
   | { cmd: 'fix' };
 
 export type ToWorklet =
-  | { type: 'sample'; id: string; sampleRate: number; channels: Float32Array[] }
+  | { type: 'sample'; id: string; sampleRate: number; channels: Float32Array[]; play?: SamplePlayback }
+  | { type: 'sampleMeta'; id: string; play: SamplePlayback }
+  /** TRIM-Vorhören */
+  | { type: 'audition'; sampleId: string; region: PlayRegion; gate: boolean; reverse: boolean; velocity: number }
+  | { type: 'auditionOff'; cut?: boolean }
   | { type: 'sampleRemove'; id: string }
   | { type: 'program'; program: DrumProgram }
   | { type: 'programRemove'; id: string }

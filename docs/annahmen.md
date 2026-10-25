@@ -25,3 +25,13 @@ Verhalten, das in den Quellen (MPC1000 v2 Operator's Manual, JJ OS2XL Manual) ni
 | A-19 | Aufgenommene Note-Repeat-Noten dauern ein halbes Raster | nicht dokumentiert | umgesetzt (M2) |
 | A-20 | Tap Tempo: mindestens 2, höchstens 4 Taps innerhalb von 2 s | Handbuch: Durchschnitt von 4 Taps | umgesetzt (M2) |
 | A-21 | Taktbalken unter der Position zeigt den Fortschritt im Loop | eigene Anzeige | umgesetzt (M2) |
+| A-22 | Auto Slice: Recovery time 10–100 = Mindestabstand in ms; Threshold 0–100 = −60…0 dB relativ zur lautesten Stelle, Hysterese bei halber Schwelle, Schnitt 1 ms vor dem Anschlag; Startwerte 30 / 50 | Handbuch nennt nur Bereiche | umgesetzt (M3) |
+| A-23 | Crossfade-Loop blendet über 100 ms (weniger, wenn vor dem Loop-Punkt nicht genug Material liegt); Loops bis 100 ms laufen wie FWD | Handbuch: „100mSEC or less cannot carry out cross fade“, Blendlänge nicht genannt | umgesetzt (M3) |
+| A-24 | REV (Program-Layer) spielt den Bereich Start–Ende bzw. den Chop rückwärts, ohne Loop | nicht dokumentiert | umgesetzt (M3) |
+| A-25 | Vorhören im TRIM-Modus mit voller Lautstärke unabhängig von VELO, Velocity des Pads zählt | nicht dokumentiert | umgesetzt (M3) |
+| A-26 | Non-Destructive Chop: F4 REVERS, F5 SLICE (Wheel 2–32, F4 AUTO, F6 DO IT, F5 ABBR.), F6 NEW PGM; Edit-Funktionen über SHIFT + F1–F6 | Handbuch nennt die Tasten, aber nicht durchgehend die Seite | umgesetzt (M3) |
+| A-27 | SHIFT + F1–F6 im TRIM: DELETE, SILENCE, NORMALIZE, REVERSE, FADE IN, FADE OUT (öffnet das Edit-Fenster mit dieser Funktion) | JJOS2XL: „only 6 fixed functions“, welche genau ist nicht belegt | umgesetzt (M3) |
+| A-28 | Pads 13–16: PAD13 Loop (Loop-Punkt–Ende, gehalten), PAD14 PLAY TO (Anfang bis Cursor-Punkt), PAD15 PLAY FROM (Cursor-Punkt bis Ende), PAD16 ganzes Sample | MPC1000-Handbuch S. 54/65, „Cursor-Punkt“ übertragen | umgesetzt (M3) |
+| A-29 | Pads 9–12: 200 ms vor dem Start, 200 ms ab Start, 200 ms vor dem Ende, 200 ms ab Ende; SHIFT + Pad im Chop-Modus: letzte 200 ms des Chops | JJOS2XL zeigt Abbildung, Längen geschätzt (200 ms für SHIFT + Pad belegt) | umgesetzt (M3) |
+| A-30 | Destruktives Schneiden (F5 CHOP) beginnt mit 4 gleichen Regionen zwischen Start und Ende; Regionen gelten bis zum Wechsel des Samples und werden nicht gespeichert | nicht dokumentiert | umgesetzt (M3) |
+| A-31 | Nach DELETE umfassen Start/Ende wieder das ganze Sample; bei DISCARD/INSERT SILENCE wandern Start/Ende/Loop/Chops mit | nicht dokumentiert | umgesetzt (M3) |

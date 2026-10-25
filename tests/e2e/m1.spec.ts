@@ -42,8 +42,8 @@ test('MODE + Pad 7 öffnet PROGRAM, Wheel ändert den Pegel des gewählten Pads'
   await pad(page, 6).click(); // Pad 7 = PROGRAM
   expect(await get(page, (h) => h.app.screenId)).toBe('program');
   expect(await get(page, (h) => h.app.ui.selectedPad)).toBe(2);
-  // Cursor auf LEV (PAD → SAMPLE → SND → DIR → LEV)
-  for (let i = 0; i < 3; i++) await btn(page, 'CURSOR_RIGHT').click();
+  // Cursor auf LEV (PAD → SAMPLE → CH → SND → DIR → LEV)
+  for (let i = 0; i < 4; i++) await btn(page, 'CURSOR_RIGHT').click();
   await wheel(page, -5);
   expect(await get(page, (h) => h.store.currentProgram.pads[2]!.layers[0]!.level)).toBe(95);
   // OUT-Seite, Mixer-Pegel

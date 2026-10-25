@@ -1,6 +1,7 @@
 import type { ButtonId, HwEvent } from '../../input/events';
 import type { Levels16Settings } from '../../core/levels16';
 import type { Store } from '../../state/store';
+import type { PlayRegion } from '../../dsp/sampler';
 import { FrameBuffer, LCD_W } from '../display/framebuffer';
 import { CELL_H, CELL_W } from '../display/font5x7';
 
@@ -15,6 +16,8 @@ export interface Screen {
   /** true = Ereignis verarbeitet (bei Pads: kein Klang). */
   onEvent(e: HwEvent): boolean;
   onEnter?(): void;
+  /** true = laufend neu zeichnen (Blinken, Abspielmarke) */
+  animating?(): boolean;
 }
 
 /** Zustand der Bedienoberfläche, den mehrere Screens teilen. */
@@ -45,6 +48,11 @@ export interface AppCtx {
   coarse(): boolean;
   playPadIndex(pad: number, velocity: number): void;
   stopPadIndex(pad: number): void;
+  /** TRIM-Vorhören eines Samples (ohne Program) */
+  audition(sampleId: string, region: PlayRegion, opts: { gate: boolean; reverse: boolean; velocity: number }): void;
+  auditionOff(cut?: boolean): void;
+  /** Noch nicht übernommenes Bearbeitungsergebnis vorhören (Keep/Retry → PLAY) */
+  previewAudio(channels: Float32Array[], sampleRate: number): void;
   setLatencyMeasure?(): void;
 }
 
