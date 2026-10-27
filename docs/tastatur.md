@@ -32,6 +32,7 @@ Belegung nach physischer Taste – gleich auf deutscher und englischer Tastatur.
 | REC / OVER DUB | O / P |
 | PLAY / STOP / PLAY START | Leertaste / ^ (US: `) / I |
 | AFTER | B |
+| NUMERIC | Ä (US: ') |
 | Data Wheel | Bild ↑ / Bild ↓, Num + / Num −, Mausrad über Display oder Wheel |
 
 ## Transport-Kombinationen
@@ -45,7 +46,7 @@ Belegung nach physischer Taste – gleich auf deutscher und englischer Tastatur.
 | Track wechseln | Tab (MODE) halten + Bild ↑/↓ |
 | UNDO SEQ | U |
 
-## TRIM-Modus (Tab + 6 bzw. MODE + PAD 6)
+## TRIM-Modus (Tab + S bzw. MODE + PAD 6)
 | Funktion | Tasten |
 | --- | --- |
 | Feld wählen | ← / →; ↓ von der oberen Zeile in die untere, Shift + ↑ nach oben |
@@ -55,3 +56,16 @@ Belegung nach physischer Taste – gleich auf deutscher und englischer Tastatur.
 | Fine-/Joint-Fenster | Enter (WINDOW) auf St, Lp oder End |
 | Vorhören | Pads: Z X C V = PAD 1–4 (gehalten), A S D F = PAD 5–8, Q W E R = PAD 9–12, 1–4 = PAD 13–16 |
 | Edit-Funktionen direkt | Shift + F1–F6 bzw. Shift + 7 8 9 0 - = |
+
+## Step Edit (Tab + 2 = PAD 14) und Grid Edit (Tab + 3 = PAD 15)
+| Funktion | Tasten |
+| --- | --- |
+| Step-Aufnahme / Grid-Eingabe ein/aus | P (OVER DUB) im Stillstand |
+| Event wählen (Step Edit) | ↑ / ↓, mehrere: Shift + ↓ |
+| Marker bewegen (Grid) | Bild ↑/↓ (24 Ticks), mit T im Raster, mit Shift 1 Tick; ← → oder , . = ein Rasterschritt |
+| Kopieren / Einfügen | Step: 9 (F3) halten + 0 (F4) bzw. − (F5); Grid: 8 (F2) bzw. 9 (F3) |
+| Löschen | Backspace (ERASE) oder 0 (F4) |
+| Optionen | Enter (WINDOW) |
+
+## Namens- und Zahleneingabe
+Während ein Namens- oder Zahlenfenster offen ist, tippt die Tastatur Text: Buchstaben und Ziffern, Backspace löscht, Enter bestätigt, Esc bricht ab.

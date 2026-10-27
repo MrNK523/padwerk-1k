@@ -10,7 +10,7 @@ import type { HwEvent } from '../../input/events';
 import { CELL_H, CELL_W } from '../display/font5x7';
 import { LCD_W, type FrameBuffer } from '../display/framebuffer';
 import { drawWave, maxZoom, viewAround, type WaveMarker } from '../display/waveform';
-import { drawSoftkeys, step, stepEnum, type AppCtx, type Screen } from './screen';
+import { drawSoftkeys, step, stepEnum, type AppCtx, type NumericTarget, type Screen } from './screen';
 import {
   AutoSliceWindow, ExtractWindow, FineWindow, NewChopProgramWindow, SampleEditWindow, SampleWindow, SHIFT_EDITS,
 } from './sampleWindows';
@@ -363,6 +363,20 @@ export class TrimScreen implements Screen {
     }
     this.held.set(e.pad, this.trimPad(e.pad, e.velocity));
     return true;
+  }
+
+  /** NUMERIC: Punkte in Sample-Punkten, Chop- und Regionsnummer (MPC1000-Handbuch S. 54) */
+  numericTarget(): NumericTarget | null {
+    const m = this.meta;
+    if (!m) return null;
+    switch (this.cursor) {
+      case 'st': case 'end': case 'lp':
+        return { label: { st: 'Start', end: 'Ende', lp: 'Loop' }[this.cursor], value: this.pointOf(this.cursor), min: 0, max: m.frames,
+          set: (v) => this.setPoint(this.cursor, v) };
+      case 'chopNo': return { label: 'Chop', value: this.chopNo, min: 1, max: Math.max(1, m.chops.length), set: (v) => { this.chopNo = v; } };
+      case 'region': return { label: 'Region', value: this.region + 1, min: 1, max: this.cuts().length - 1, set: (v) => { this.region = v - 1; } };
+      default: return null;
+    }
   }
 
   // ---------- Bedienung ----------

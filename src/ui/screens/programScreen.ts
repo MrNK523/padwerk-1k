@@ -11,6 +11,7 @@ import { CELL_H, CELL_W } from '../display/font5x7';
 import { FrameBuffer, LCD_W } from '../display/framebuffer';
 import {
   type AppCtx, type Screen, drawSoftkeys, formatPan, formatTune, pad2, pad3, step, stepEnum,
+  type NumericTarget,
 } from './screen';
 import { LayerWindow, ProgramListWindow, SampleListWindow } from './windows';
 
@@ -27,6 +28,8 @@ interface Column {
   window?(pad: number): Screen | null;
   /** Wert dieser Spalte von einem Pad auf ein anderes kopieren (UNDO SEQ + Pad) */
   copy?(from: PadParams, to: number): void;
+  /** Zahlenspalte für NUMERIC */
+  numeric?: { get(p: PadParams): number; set(pad: number, v: number): void; min: number; max: number };
 }
 
 const VISIBLE_ROWS = 5;
@@ -58,6 +61,14 @@ export class ProgramScreen implements Screen {
     return { SAMPLE: 0, AMP: 1, FILTER: 2, PITCH: 3, MUTE: 4, LFO: 4, OUT: 5 }[this.page];
   }
 
+  numericTarget(): NumericTarget | null {
+    const c = this.columns()[this.col];
+    if (!c?.numeric) return null;
+    const n = c.numeric;
+    const pad = this.pad;
+    return { label: `${c.label} ${padName(pad)}`, value: n.get(this.store.currentProgram.pads[pad]!), min: n.min, max: n.max, signed: n.min < 0, set: (v) => n.set(pad, v) };
+  }
+
   // ---------- Spalten je Seite ----------
 
   private columns(): Column[] {
@@ -70,6 +81,7 @@ export class ProgramScreen implements Screen {
       text: (p) => String(get(p)).padStart(width),
       wheel: (pad, d) => set(pad, step(get(s.currentProgram.pads[pad]!), d, min, max)),
       copy: (from, to) => set(to, get(from)),
+      numeric: { get, set, min, max },
     });
     const padCol: Column = {
       label: 'PAD', width: 3,

@@ -2,7 +2,7 @@ import type { HwBus } from './events';
 import { KEYBOARD_PAD_VELOCITY, keyTarget } from './keyboard';
 
 /** Verbindet die Computertastatur mit dem Hardware-Bus. Gibt eine Abmeldefunktion zurück. */
-export function attachKeyboard(target: Window, bus: HwBus, onAnyKey?: () => void): () => void {
+export function attachKeyboard(target: Window, bus: HwBus, onAnyKey?: () => void, textMode?: () => boolean): () => void {
   const down = new Set<string>();
   const isTyping = (ev: KeyboardEvent) => {
     const t = ev.target as HTMLElement | null;
@@ -11,6 +11,16 @@ export function attachKeyboard(target: Window, bus: HwBus, onAnyKey?: () => void
 
   const onDown = (ev: KeyboardEvent) => {
     if (isTyping(ev) || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    // Namens-/Zahleneingabe: druckbare Zeichen, Löschen und Enter als Text statt als Pads/Tasten
+    if (textMode?.()) {
+      const text = ev.key === 'Backspace' ? '\b' : ev.key === 'Enter' ? '\n' : ev.key.length === 1 ? ev.key : null;
+      if (text !== null) {
+        ev.preventDefault();
+        onAnyKey?.();
+        bus.emit({ kind: 'text', text, source: 'keyboard' });
+        return;
+      }
+    }
     const t = keyTarget(ev.code);
     if (!t) return;
     ev.preventDefault();

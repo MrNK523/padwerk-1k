@@ -2,8 +2,9 @@ import {
   type DrumProgram, type Layer, type PadParams, type SampleMeta, type SamplePlayback,
   MAX_PROGRAMS, clampPlayback, defaultPlayback, newDrumProgram, sanitizeName, uniqueName,
 } from '../core/model';
-import { MAX_SEQUENCES, newSequence, type NoteEvent, type Sequence, type TimeSig, type Track } from '../core/sequence';
+import { MAX_SEQUENCES, newSequence, TRACKS_PER_SEQUENCE, type NoteEvent, type Sequence, type TimeSig, type Track } from '../core/sequence';
 import { defaultSeqSettings, type SeqSettings } from '../core/sequencerCore';
+import type { ProjectData, ProjectKind } from '../io/projectFile';
 
 /** Audiodaten liegen getrennt von den (serialisierbaren) Metadaten. */
 export interface SampleAudio {
@@ -20,7 +21,9 @@ export type Change =
   | { kind: 'current-program'; id: string }
   /** `fromEngine` = Änderung kam aus dem Worklet (Aufnahme) und muss nicht zurückgespiegelt werden */
   | { kind: 'sequence'; index: number; fromEngine?: boolean }
-  | { kind: 'seq-settings' };
+  | { kind: 'seq-settings' }
+  /** ganzes Projekt ersetzt (Laden, Neues Projekt, Wiederherstellen) – alles neu spiegeln */
+  | { kind: 'project' };
 
 export type ChangeListener = (c: Change) => void;
 
@@ -47,13 +50,141 @@ export class Store {
   private nextId = 1;
 
   constructor() {
+    this.state = this.emptyState();
+  }
+
+  private emptyState(): ProjectState {
     const first = newDrumProgram(this.id('p'), 'Program01');
-    this.state = {
+    const state: ProjectState = {
       samples: [], programs: [first], currentProgramId: first.id,
       sequences: Array.from({ length: MAX_SEQUENCES }, () => null),
       currentSeq: 0, activeTrack: 0, soloTrack: null, seqSettings: defaultSeqSettings(),
     };
-    this.state.sequences[0] = newSequence(0, first.id);
+    state.sequences[0] = newSequence(0, first.id);
+    return state;
+  }
+
+  // ---------- Projekt (Speichern/Laden) ----------
+
+  /** Neues, leeres Projekt (alle Samples, Programs und Sequenzen gelöscht). */
+  newProject(): void {
+    this.audio.clear();
+    this.nextId = 1;
+    Object.assign(this.state, this.emptyState());
+    this.undoSnapshot = null;
+    this.emit({ kind: 'project' });
+  }
+
+  /** Zustand für eine Datei zusammenstellen. PROGRAM: ein Program mit seinen Samples; SEQUENCE: eine Sequenz. */
+  exportProject(kind: ProjectKind, opts: { programId?: string; seqIndex?: number } = {}): ProjectData {
+    const clone = <T>(v: T): T => structuredClone(v);
+    const sampleData = (ids: Iterable<string>) => [...new Set(ids)].flatMap((id) => {
+      const meta = this.sample(id);
+      const a = this.audio.get(id);
+      return meta && a ? [{ meta: clone(meta), channels: a.channels }] : [];
+    });
+    if (kind === 'PROGRAM') {
+      const p = this.program(opts.programId ?? this.state.currentProgramId)!;
+      const ids = p.pads.flatMap((pad) => pad.layers.map((l) => l.sampleId).filter((x): x is string => !!x));
+      return { kind, samples: sampleData(ids), programs: [clone(p)], sequences: [] };
+    }
+    if (kind === 'SEQUENCE') {
+      const i = opts.seqIndex ?? this.state.currentSeq;
+      return { kind, samples: [], programs: [], sequences: [clone(this.ensureSequence(i))] };
+    }
+    return {
+      kind, samples: sampleData(this.state.samples.map((s) => s.id)), programs: clone(this.state.programs),
+      sequences: clone(this.state.sequences), currentProgramId: this.state.currentProgramId,
+      currentSeq: this.state.currentSeq, activeTrack: this.state.activeTrack, seqSettings: clone(this.state.seqSettings),
+    };
+  }
+
+  /** ALL-Datei: Projekt komplett ersetzen. */
+  loadProject(d: ProjectData): void {
+    this.audio.clear();
+    const samples = d.samples.map((s) => this.normalizeSample(s.meta, s.channels));
+    for (const s of d.samples) this.audio.set(s.meta.id, { channels: s.channels.slice(0, 2), sampleRate: s.meta.sampleRate });
+    const programs = d.programs.length ? d.programs.map((p) => this.normalizeProgram(p)) : [newDrumProgram('p0', 'Program01')];
+    const currentProgramId = programs.some((p) => p.id === d.currentProgramId) ? d.currentProgramId! : programs[0]!.id;
+    const pids = new Set(programs.map((p) => p.id));
+    const sequences = Array.from({ length: MAX_SEQUENCES }, (_, i) => d.sequences[i] ?? null)
+      .map((q) => (q ? this.normalizeSequence(q, currentProgramId, pids) : null));
+    Object.assign(this.state, {
+      samples, programs, sequences, currentProgramId,
+      currentSeq: Math.min(MAX_SEQUENCES - 1, Math.max(0, d.currentSeq ?? 0)),
+      activeTrack: Math.min(TRACKS_PER_SEQUENCE - 1, Math.max(0, d.activeTrack ?? 0)),
+      soloTrack: null,
+      seqSettings: { ...defaultSeqSettings(), ...d.seqSettings },
+    });
+    if (!this.state.sequences[this.state.currentSeq]) this.ensureSequence(this.state.currentSeq);
+    // IDs fortsetzen, damit neue Objekte nicht mit geladenen kollidieren
+    const nums = [...samples.map((s) => s.id), ...programs.map((p) => p.id)].map((id) => Number(id.slice(1)) || 0);
+    this.nextId = Math.max(0, ...nums) + 1;
+    this.undoSnapshot = null;
+    this.emit({ kind: 'project' });
+  }
+
+  /** PROGRAM-Datei: Program und seine Samples zusätzlich laden (neue IDs, Namen eindeutig). */
+  mergeProgram(d: ProjectData): DrumProgram | null {
+    const src = d.programs[0];
+    if (!src || this.state.programs.length >= MAX_PROGRAMS) return null;
+    const idMap = new Map<string, string>();
+    for (const s of d.samples) {
+      const { start, end, loopOn, loopPoint, loopMode, loopLock, chopOn, chops } = this.normalizeSample(s.meta, s.channels);
+      const added = this.addSample(s.meta.name, { channels: s.channels, sampleRate: s.meta.sampleRate }, s.meta.rootNote,
+        { start, end, loopOn, loopPoint, loopMode, loopLock, chopOn, chops });
+      idMap.set(s.meta.id, added.id);
+    }
+    const p = this.normalizeProgram(structuredClone(src));
+    p.id = this.id('p');
+    p.name = uniqueName(p.name, this.state.programs.map((x) => x.name));
+    for (const pad of p.pads) for (const l of pad.layers) l.sampleId = l.sampleId ? idMap.get(l.sampleId) ?? null : null;
+    this.state.programs.push(p);
+    this.emit({ kind: 'program', id: p.id });
+    return p;
+  }
+
+  /** SEQUENCE-Datei in Platz `index` laden; unbekannte Programs → aktuelles Program. */
+  loadSequenceInto(d: ProjectData, index: number): boolean {
+    const q = d.sequences[0];
+    if (!q) return false;
+    const i = Math.min(MAX_SEQUENCES - 1, Math.max(0, index));
+    this.state.sequences[i] = this.normalizeSequence(structuredClone(q), this.state.currentProgramId, new Set(this.state.programs.map((p) => p.id)));
+    if (i === this.state.currentSeq) this.undoSnapshot = null;
+    this.emit({ kind: 'sequence', index: i });
+    return true;
+  }
+
+  /** Fehlende Felder älterer Dateien ergänzen. */
+  private normalizeSample(meta: SampleMeta, channels: Float32Array[]): SampleMeta {
+    const frames = channels[0]?.length ?? 0;
+    return { ...meta, frames, channels: channels.length === 2 ? 2 : 1, ...clampPlayback({ ...defaultPlayback(frames), ...meta }, frames) };
+  }
+
+  private normalizeProgram(p: DrumProgram): DrumProgram {
+    const base = newDrumProgram(p.id, p.name);
+    p.pads = base.pads.map((def, i) => {
+      const pad = p.pads?.[i];
+      if (!pad) return def;
+      const merged = { ...def, ...pad };
+      merged.layers = def.layers.map((l, k) => ({ ...l, ...pad.layers?.[k] })) as PadParams['layers'];
+      return merged;
+    });
+    return p;
+  }
+
+  private normalizeSequence(q: Sequence, fallbackProgram: string, programIds: Set<string>): Sequence {
+    const def = newSequence(0, fallbackProgram);
+    const tracks = def.tracks.map((d, i) => {
+      const t = q.tracks?.[i];
+      if (!t) return d;
+      return {
+        ...d, ...t,
+        programId: programIds.has(t.programId) ? t.programId : fallbackProgram,
+        events: [...(t.events ?? [])].sort((a, b) => a.tick - b.tick),
+      };
+    });
+    return { ...def, ...q, bars: q.bars?.length ? q.bars : def.bars, tracks };
   }
 
   private undoSnapshot: { index: number; seq: Sequence } | null = null;
@@ -283,6 +414,18 @@ export class Store {
   setTrackProgram(programId: string): void {
     this.updateTrack(this.state.activeTrack, { programId });
     this.setCurrentProgram(programId);
+  }
+
+  /** Änderung an einer Sequenz melden, die direkt am Objekt erfolgte (z. B. Name). */
+  touchSequence(index: number): void {
+    this.emit({ kind: 'sequence', index });
+  }
+
+  renameProgram(id: string, raw: string): void {
+    const p = this.program(id);
+    if (!p) return;
+    p.name = uniqueName(sanitizeName(raw), this.state.programs.filter((x) => x.id !== id).map((x) => x.name));
+    this.emit({ kind: 'program', id });
   }
 
   updateSequence(fn: (seq: Sequence) => void): void {

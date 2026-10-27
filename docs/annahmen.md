@@ -35,3 +35,10 @@ Verhalten, das in den Quellen (MPC1000 v2 Operator's Manual, JJ OS2XL Manual) ni
 | A-29 | Pads 9–12: 200 ms vor dem Start, 200 ms ab Start, 200 ms vor dem Ende, 200 ms ab Ende; SHIFT + Pad im Chop-Modus: letzte 200 ms des Chops | JJOS2XL zeigt Abbildung, Längen geschätzt (200 ms für SHIFT + Pad belegt) | umgesetzt (M3) |
 | A-30 | Destruktives Schneiden (F5 CHOP) beginnt mit 4 gleichen Regionen zwischen Start und Ende; Regionen gelten bis zum Wechsel des Samples und werden nicht gespeichert | nicht dokumentiert | umgesetzt (M3) |
 | A-31 | Nach DELETE umfassen Start/Ende wieder das ganze Sample; bei DISCARD/INSERT SILENCE wandern Start/Ende/Loop/Chops mit | nicht dokumentiert | umgesetzt (M3) |
+| A-32 | Grid Edit: Ein Event liegt „unter dem Marker“, wenn es im Fenster [Marker, Marker + 24 Ticks) beginnt; COPY/DELETE ohne Bewegung betreffen genau dieses Event | nicht dokumentiert | umgesetzt (M4) |
+| A-33 | Grid Edit: ◀ ▶ und STEP bewegen den senkrechten Marker um einen T.C.-Schritt; oberste Zeile = Pad 1 der Bank | nicht dokumentiert | umgesetzt (M4) |
+| A-34 | Loop Edit: neue Schritte mit der Anschlagstärke des Pads, Dauer = TC VALUE % einer 1/16 | JJOS2XL nennt sieben Velocity-Stufen ohne Werte | umgesetzt (M4) |
+| A-35 | Step Edit F5 INSERT legt sofort eine Note des zuletzt gewählten Pads an (Velocity 100, Dauer nach T.C.) – ohne Insert-Fenster, da es nur Pad-Events gibt | Handbuch: Insert-Fenster mit Event-Typ | umgesetzt (M4) |
+| A-36 | NUMERIC beim Tempo: letzte Ziffer ist die Zehntelstelle (1 0 0 5 → 100,5) | Handbuch nennt Tempo nicht | umgesetzt (M4) |
+| A-37 | PASTE (Step und Grid) behält die Pads und verschiebt nur die Zeit: Anfang der Auswahl → Position | nicht dokumentiert | umgesetzt (M4) |
+| A-38 | Step-Aufnahme: Standard „Auto step increment YES“, „Duration TC VALUE 100 %“; Schritt = T.C.-Wert (bei OFF 1/16) | Handbuch nennt keine Startwerte | umgesetzt (M4) |

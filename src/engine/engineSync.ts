@@ -9,6 +9,9 @@ import type { AudioEngine } from './audioEngine';
 export function syncEngine(store: Store, engine: AudioEngine): void {
   const pendingPrograms = new Set<string>();
   const pendingMeta = new Set<string>();
+  // was das Worklet gerade kennt – nach „Projekt ersetzt“ wird es geleert
+  const sentSamples = new Set<string>();
+  const sentPrograms = new Set<string>();
   let pendingSequence = false;
   let pendingSettings = false;
   let scheduled = false;
@@ -16,6 +19,7 @@ export function syncEngine(store: Store, engine: AudioEngine): void {
   const sendSample = (id: string) => {
     const audio = store.sampleAudio(id);
     if (!audio) return;
+    sentSamples.add(id);
     // Kopie übertragen – der Hauptthread behält seine Daten (Wellenform, Speichern)
     const channels = audio.channels.map((c) => c.slice());
     engine.send({ type: 'sample', id, sampleRate: audio.sampleRate, channels, play: playOf(id) }, channels.map((c) => c.buffer));
@@ -28,7 +32,7 @@ export function syncEngine(store: Store, engine: AudioEngine): void {
   };
   const sendProgram = (id: string) => {
     const p = store.program(id);
-    if (p) engine.send({ type: 'program', program: p });
+    if (p) { engine.send({ type: 'program', program: p }); sentPrograms.add(id); }
   };
   const sendSequence = () => engine.send({ type: 'sequence', index: store.state.currentSeq, seq: store.currentSequence });
   const sendSettings = () => engine.send({
@@ -47,25 +51,37 @@ export function syncEngine(store: Store, engine: AudioEngine): void {
   };
   const schedule = () => { if (!scheduled) { scheduled = true; queueMicrotask(flush); } };
 
-  engine.onReady(() => {
+  const sendAll = () => {
     for (const s of store.state.samples) sendSample(s.id);
     for (const p of store.state.programs) sendProgram(p.id);
     sendSettings();
     sendSequence();
-  });
+  };
+  engine.onReady(sendAll);
 
   store.on((c) => {
     if (!engine.context) return; // vor dem Start: kommt mit der Erstbefüllung
     switch (c.kind) {
       case 'sample':
-        if (c.removed) engine.send({ type: 'sampleRemove', id: c.id }); else sendSample(c.id);
+        if (c.removed) { engine.send({ type: 'sampleRemove', id: c.id }); sentSamples.delete(c.id); } else sendSample(c.id);
+        break;
+      case 'project':
+        engine.send({ type: 'transport', cmd: 'stop' });
+        engine.send({ type: 'allSoundOff' });
+        for (const id of sentSamples) engine.send({ type: 'sampleRemove', id });
+        for (const id of sentPrograms) engine.send({ type: 'programRemove', id });
+        sentSamples.clear();
+        sentPrograms.clear();
+        pendingPrograms.clear();
+        pendingMeta.clear();
+        sendAll();
         break;
       case 'sample-meta':
         pendingMeta.add(c.id);
         schedule();
         break;
       case 'program':
-        if (c.removed) { engine.send({ type: 'programRemove', id: c.id }); return; }
+        if (c.removed) { engine.send({ type: 'programRemove', id: c.id }); sentPrograms.delete(c.id); return; }
         pendingPrograms.add(c.id);
         schedule();
         break;

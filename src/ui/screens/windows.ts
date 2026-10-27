@@ -3,7 +3,7 @@ import { padName, type SampleMeta } from '../../core/model';
 import type { HwEvent } from '../../input/events';
 import { CELL_H, CELL_W } from '../display/font5x7';
 import type { FrameBuffer } from '../display/framebuffer';
-import { drawSoftkeys, drawWindowFrame, formatTune, pad2, step, stepEnum, type AppCtx, type Screen } from './screen';
+import { drawSoftkeys, drawWindowFrame, formatTune, pad2, step, stepEnum, type AppCtx, type NumericTarget, type Screen } from './screen';
 
 /** Gemeinsame Grundlage: WINDOW schließt jedes Fenster (wie am Gerät). */
 export abstract class Window implements Screen {
@@ -295,6 +295,70 @@ export class AssignToPadWindow extends Window {
       if (this.queue.length === 0) { this.ctx.closeWindow(); this.onDone?.(); }
       return true;
     }
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// NUMERIC: Zahl mit den Pads eingeben (MPC1000-Handbuch S. 11)
+// PAD 1–9 = 1–9, PAD 10 = 0, PAD 12 = Enter, PAD 13 = +/−, PAD 16 = letzte Ziffer löschen
+// ---------------------------------------------------------------------------
+export class NumericWindow extends Window {
+  readonly id = 'numeric';
+  private digits = '';
+  private negative: boolean;
+  constructor(ctx: AppCtx, private target: NumericTarget) {
+    super(ctx);
+    this.negative = target.value < 0;
+  }
+  wantsText(): boolean { return true; }
+  softkeys() { return ['', '', '', 'ABBR.', 'ENTER', '']; }
+
+  /** ANNAHME A-36: bei Nachkommastellen (Tempo) ist die letzte Ziffer die Zehntelstelle */
+  private result(): number {
+    const t = this.target;
+    const raw = Number(this.digits || '0') / Math.pow(10, t.decimals ?? 0);
+    const v = this.negative && t.signed ? -raw : raw;
+    return Math.min(t.max, Math.max(t.min, v));
+  }
+
+  render(fb: FrameBuffer): void {
+    const { x, y } = drawWindowFrame(fb, 'Zahleneingabe', 40, 12, 160, 40);
+    const t = this.target;
+    const sign = t.signed ? (this.negative ? '-' : '+') : '';
+    const shown = this.digits ? `${sign}${this.digits}` : `${t.value}`;
+    fb.text(x, y, `${t.label}:`);
+    fb.text(x + 12 * CELL_W, y, shown.padStart(8).slice(-8), true);
+    fb.text(x, y + CELL_H + 2, `${t.min}…${t.max}`.slice(0, 24));
+    drawSoftkeys(fb, this.softkeys());
+  }
+
+  private type(ch: string): void {
+    if (/^[0-9]$/.test(ch)) { if (this.digits.length < 8) this.digits += ch; }
+    else if (ch === '\b') this.digits = this.digits.slice(0, -1);
+    else if ((ch === '-' || ch === '+') && this.target.signed) this.negative = ch === '-';
+    else if (ch === '\n') this.enter();
+  }
+
+  private enter(): void {
+    if (this.digits) this.target.set(this.result());
+    this.ctx.closeWindow();
+  }
+
+  protected handle(e: HwEvent): boolean {
+    if (e.kind === 'text') { this.type(e.text); return true; }
+    if (e.kind === 'pad') {
+      if (!e.down) return true;
+      if (e.pad <= 8) this.type(String(e.pad + 1));
+      else if (e.pad === 9) this.type('0');
+      else if (e.pad === 11) this.enter();
+      else if (e.pad === 12 && this.target.signed) this.negative = !this.negative;
+      else if (e.pad === 15) this.type('\b');
+      return true;
+    }
+    if (e.kind !== 'button' || !e.down) return e.kind === 'wheel';
+    if (e.id === 'F4' || e.id === 'NUMERIC') { this.ctx.closeWindow(); return true; }
+    if (e.id === 'F5') { this.enter(); return true; }
     return false;
   }
 }

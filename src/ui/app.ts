@@ -23,9 +23,15 @@ import { DiagScreen, initialDiagState, type DiagState } from './screens/diagScre
 import { ProgramScreen } from './screens/programScreen';
 import { TrimScreen } from './screens/trimScreen';
 import { type AppCtx, type Screen, type UiState } from './screens/screen';
-import { MainScreen, type TransportView } from './screens/mainScreen';
-import { LoadScreen, MODE_PADS, ModeSelectOverlay, PlaceholderScreen } from './screens/simpleScreens';
-import { AssignToPadWindow, Levels16Window } from './screens/windows';
+import { MainScreen, type MainActions, type TransportView } from './screens/mainScreen';
+import { StepEditScreen } from './screens/stepEditScreen';
+import { GridEditScreen } from './screens/gridEditScreen';
+import { MODE_PADS, ModeSelectOverlay, PlaceholderScreen } from './screens/simpleScreens';
+import { LoadScreen, LoadSequenceWindow, SaveScreen } from './screens/saveLoadScreens';
+import { ConfirmWindow } from './screens/sampleWindows';
+import { Autosave } from '../io/autosave';
+import { decodeProject, FILE_EXT, isProjectFile } from '../io/projectFile';
+import { AssignToPadWindow, Levels16Window, NumericWindow } from './screens/windows';
 
 /** Interne Sample-ID für das Vorhören von Bearbeitungen (nie im Store) */
 const PREVIEW_ID = '__preview';
@@ -43,8 +49,10 @@ export class App implements AppCtx {
     bank: 0, fullLevel: false, fullLevelValue: 127, levels16On: false,
     levels16: { type: 'VELOCITY', sourcePad: 0, originalKeyPad: 0 },
     selectedPad: 0, lastVelocity: null, held: new Set(), message: '',
+    stepRec: false, stepOpts: { autoStep: true, duration: 'TC VALUE', durPct: 100, stepSound: false }, clipboard: null,
   };
   readonly diag: DiagState = initialDiagState();
+  readonly autosave = new Autosave(this.store);
   private screens: Record<string, Screen>;
   private screen: Screen;
   private windows: Screen[] = [];
@@ -75,22 +83,26 @@ export class App implements AppCtx {
     this.panel.setPadLabels(MODE_PADS.map((m) => m.short));
     syncEngine(this.store, this.engine);
 
-    const main = new MainScreen(this, {
+    const seqActions: MainActions = {
       transport: this.transport,
-      locate: (tick) => this.sendTransport({ cmd: 'locate', tick }),
+      locate: (tick) => { this.transport.tick = tick; this.sendTransport({ cmd: 'locate', tick }); },
       fix: () => this.sendTransport({ cmd: 'fix' }),
-    }, () => this.voices);
+    };
+    const main = new MainScreen(this, seqActions, () => this.voices);
     this.screens = {
       main,
       program: new ProgramScreen(this),
       trim: new TrimScreen(this),
       load: new LoadScreen(this, this.loadOpts),
+      save: new SaveScreen(this),
+      step: new StepEditScreen(this, seqActions),
+      grid: new GridEditScreen(this, seqActions),
       other: new DiagScreen(this.diag, { measure: () => void this.measure(), allSoundOff: () => this.engine.send({ type: 'allSoundOff' }) }),
       modeSelect: new ModeSelectOverlay(),
     };
     this.screen = main;
 
-    this.fileInput = Object.assign(document.createElement('input'), { type: 'file', multiple: true, accept: ACCEPTED_AUDIO });
+    this.fileInput = Object.assign(document.createElement('input'), { type: 'file', multiple: true, accept: `${ACCEPTED_AUDIO},${FILE_EXT}` });
     this.fileInput.hidden = true;
     this.fileInput.addEventListener('change', () => {
       const files = [...(this.fileInput.files ?? [])];
@@ -102,7 +114,7 @@ export class App implements AppCtx {
 
     this.store.on(() => this.touch());
     this.bus.on((e) => this.onEvent(e));
-    attachKeyboard(window, this.bus);
+    attachKeyboard(window, this.bus, undefined, () => !!(this.windows.at(-1) ?? this.screen).wantsText?.());
     this.engine.onMessage((m) => {
       if (m.type === 'status' && m.activeVoices !== this.voices) { this.voices = m.activeVoices; this.diag.voices = m.activeVoices; this.touch(); }
       if (m.type === 'pos') {
@@ -114,7 +126,7 @@ export class App implements AppCtx {
     });
     this.updateLeds();
     this.loop();
-    setTimeout(() => this.loadStarterKit(), 0);
+    void this.startSession();
     setInterval(() => this.pollEngine(), 250);
   }
 
@@ -165,6 +177,10 @@ export class App implements AppCtx {
 
   setMode(id: string): void {
     const s = this.screens[id];
+    if (s && this.screen !== s) {
+      this.ui.stepRec = false; // Step-Aufnahme gilt nur im jeweiligen Modus
+      this.screen.onLeave?.();
+    }
     this.windows = [];
     if (s) { this.screen = s; s.onEnter?.(); }
     this.touch();
@@ -172,7 +188,7 @@ export class App implements AppCtx {
 
   private modeFromPad(pad: number): void {
     const m = MODE_PADS[pad]!;
-    const id = { 1: 'load', 5: 'trim', 6: 'program', 9: 'other' }[pad];
+    const id = { 1: 'load', 2: 'save', 5: 'trim', 6: 'program', 9: 'other', 13: 'step', 14: 'grid' }[pad];
     if (id) this.setMode(id);
     else {
       this.screens[`ph${pad}`] ??= new PlaceholderScreen(`ph${pad}`, m.name, m.milestone);
@@ -263,6 +279,13 @@ export class App implements AppCtx {
         if (this.ui.held.has('TAP_TEMPO')) { this.toggleRepeatLatch(); this.padDuringTap = true; }
         return;
       case 'MAIN': this.setMode('main'); return;
+      case 'NUMERIC': {
+        const top = this.windows.at(-1) ?? this.screen;
+        const t = top.numericTarget?.();
+        if (t) this.openWindow(new NumericWindow(this, t));
+        else this.flash('Hier keine Zahleneingabe');
+        return;
+      }
       case 'FULL_LEVEL': this.fullLevelAdjusted = false; return;
       case 'LEVELS_16':
         if (this.ui.levels16On) { this.ui.levels16On = false; this.flash('16 Levels aus'); this.updateLeds(); }
@@ -432,7 +455,7 @@ export class App implements AppCtx {
     const t = this.transport;
     this.panel.setLed('PLAY', t.state === 'playing');
     this.panel.setLed('REC', t.recMode === 'rec' && t.state === 'playing');
-    this.panel.setLed('OVER_DUB', t.recMode === 'dub' && t.state === 'playing');
+    this.panel.setLed('OVER_DUB', (t.recMode === 'dub' && t.state === 'playing') || this.ui.stepRec);
     this.panel.setBlink('REC', (t.state === 'waiting' || t.state === 'countin') && t.recMode === 'rec');
     this.panel.setBlink('OVER_DUB', (t.state === 'waiting' || t.state === 'countin') && t.recMode === 'dub');
     this.panel.setLed('UNDO_SEQ', this.store.undoLed);
@@ -489,6 +512,57 @@ export class App implements AppCtx {
 
   // ---------- Samples ----------
 
+  /** Letzte Sitzung wiederherstellen, sonst das Start-Kit laden. */
+  private async startSession(): Promise<void> {
+    const restored = await this.autosave.restore();
+    if (restored) this.flash('Letzte Sitzung wiederhergestellt');
+    else { this.loadStarterKit(); this.autosave.startFresh(); }
+    window.addEventListener('pagehide', () => void this.autosave.save());
+    document.addEventListener('visibilitychange', () => { if (document.hidden) void this.autosave.save(); });
+  }
+
+  async saveFile(name: string, data: ArrayBuffer, mime: string): Promise<boolean> {
+    type Picker = (o: object) => Promise<{ createWritable(): Promise<{ write(d: ArrayBuffer): Promise<void>; close(): Promise<void> }> }>;
+    const picker = (window as unknown as { showSaveFilePicker?: Picker }).showSaveFilePicker;
+    if (picker) {
+      try {
+        const handle = await picker({ suggestedName: name });
+        const w = await handle.createWritable();
+        await w.write(data);
+        await w.close();
+        return true;
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return false;
+        console.warn('Dateidialog nicht nutzbar, lade herunter', err);
+      }
+    }
+    const url = URL.createObjectURL(new Blob([data], { type: mime }));
+    const a = Object.assign(document.createElement('a'), { href: url, download: name });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    return true;
+  }
+
+  /** Padwerk-Datei: je nach Art ersetzen, hinzufügen oder in eine Sequenz laden. */
+  private loadProjectFile(name: string, buf: ArrayBuffer): void {
+    let d;
+    try { d = decodeProject(buf); } catch (err) { this.flash(`${name.slice(0, 20)}: ${(err as Error).message}`); return; }
+    if (d.kind === 'ALL') {
+      this.openWindow(new ConfirmWindow(this, 'Projekt laden', 'Speicher ersetzen?', () => {
+        this.store.loadProject(d);
+        this.setMode('main');
+        this.flash(`Projekt ${name.slice(0, 24)} geladen`);
+      }));
+    } else if (d.kind === 'PROGRAM') {
+      const p = this.store.mergeProgram(d);
+      if (p) { this.store.setCurrentProgram(p.id); this.flash(`Program ${p.name} geladen`); } else this.flash('Keine Programs mehr frei');
+    } else {
+      this.openWindow(new LoadSequenceWindow(this, d));
+    }
+  }
+
   private loadStarterKit(): void {
     const kit = makeStarterKit();
     const pid = this.store.currentProgram.id;
@@ -507,6 +581,7 @@ export class App implements AppCtx {
     for (const f of files) {
       try {
         const data = await f.arrayBuffer();
+        if (isProjectFile(data)) { this.loadProjectFile(f.name, data); continue; }
         const audio = await importAudio(data, (b) => this.engine.decode(b));
         const meta = this.store.addSample(f.name, audio, rootNoteFromName(f.name) ?? 60);
         loaded.push(meta);

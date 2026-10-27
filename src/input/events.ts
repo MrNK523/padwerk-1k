@@ -23,7 +23,9 @@ export type HwEvent =
   | { kind: 'button'; id: ButtonId; down: boolean; source: InputSource }
   | { kind: 'pad'; pad: PadIndex; down: boolean; velocity: number; source: InputSource }
   | { kind: 'wheel'; delta: number; source: InputSource }
-  | { kind: 'slider'; slider: 0 | 1; value: number; source: InputSource };
+  | { kind: 'slider'; slider: 0 | 1; value: number; source: InputSource }
+  /** Texteingabe von der Computertastatur (nur während Namens- oder Zahleneingabe): Zeichen, '\b' = löschen, '\n' = Enter */
+  | { kind: 'text'; text: string; source: InputSource };
 
 export type InputSource = 'touch' | 'mouse' | 'keyboard' | 'midi' | 'footswitch' | 'test';
 

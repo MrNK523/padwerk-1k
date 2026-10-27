@@ -31,19 +31,34 @@ export class NameWindow extends Window {
   readonly id = 'name';
   private chars: string[];
   private pos = 0;
+  private typed = false;
   constructor(ctx: AppCtx, private title: string, initial: string, private onDone: (name: string) => void) {
     super(ctx);
     this.chars = initial.padEnd(SAMPLE_NAME_MAX).slice(0, SAMPLE_NAME_MAX).split('');
   }
   softkeys() { return ['', 'ENTF', 'EINF', 'ABBR.', 'ENTER', '']; }
+  wantsText(): boolean { return true; }
   render(fb: FrameBuffer): void {
     const { x, y } = drawWindowFrame(fb, this.title);
     fb.text(x, y + CELL_H, 'Name:');
     this.chars.forEach((c, i) => fb.text(x + (6 + i) * CELL_W, y + CELL_H, c, i === this.pos));
-    fb.text(x, y + 3 * CELL_H, 'Wheel = Zeichen, ◀ ▶ = Stelle');
+    fb.text(x, y + 3 * CELL_H, 'Tippen oder Wheel; ◀ ▶ = Stelle');
     drawSoftkeys(fb, this.softkeys());
   }
   protected handle(e: HwEvent): boolean {
+    if (e.kind === 'text') {
+      // Computertastatur: Zeichen an der Cursorstelle, Löschen, Enter (D-31 aufgehoben)
+      if (e.text === '\n') { this.finish(); return true; }
+      if (e.text === '\b') {
+        if (this.pos > 0) { this.pos--; this.chars.splice(this.pos, 1); this.chars.push(' '); }
+        return true;
+      }
+      // erstes getipptes Zeichen ersetzt den ganzen Vorschlag (wie markierter Text)
+      if (!this.typed) { this.chars = Array.from({ length: SAMPLE_NAME_MAX }, () => ' '); this.pos = 0; this.typed = true; }
+      this.chars[this.pos] = e.text;
+      this.pos = Math.min(SAMPLE_NAME_MAX - 1, this.pos + 1);
+      return true;
+    }
     if (e.kind === 'wheel') {
       const cur = NAME_CHARS.indexOf(this.chars[this.pos]!);
       const n = NAME_CHARS.length;
@@ -57,14 +72,15 @@ export class NameWindow extends Window {
       case 'F2': this.chars.splice(this.pos, 1); this.chars.push(' '); return true;
       case 'F3': this.chars.splice(this.pos, 0, ' '); this.chars.length = SAMPLE_NAME_MAX; return true;
       case 'F4': this.ctx.closeWindow(); return true;
-      case 'F5': {
-        const name = sanitizeName(this.chars.join('').trimEnd());
-        this.ctx.closeWindow();
-        this.onDone(name);
-        return true;
-      }
+      case 'F5': this.finish(); return true;
     }
     return false;
+  }
+
+  private finish(): void {
+    const name = sanitizeName(this.chars.join('').trimEnd());
+    this.ctx.closeWindow();
+    this.onDone(name);
   }
 }
 

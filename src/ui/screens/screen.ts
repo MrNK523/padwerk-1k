@@ -1,5 +1,6 @@
 import type { ButtonId, HwEvent } from '../../input/events';
 import type { Levels16Settings } from '../../core/levels16';
+import type { EventClip } from '../../core/eventEdit';
 import type { Store } from '../../state/store';
 import type { PlayRegion } from '../../dsp/sampler';
 import { FrameBuffer, LCD_W } from '../display/framebuffer';
@@ -16,6 +17,12 @@ export interface Screen {
   /** true = Ereignis verarbeitet (bei Pads: kein Klang). */
   onEvent(e: HwEvent): boolean;
   onEnter?(): void;
+  /** beim Verlassen des Modus (z. B. Loop-Bereich zurücksetzen) */
+  onLeave?(): void;
+  /** true = Computertastatur liefert Text (Namens- und Zahleneingabe) */
+  wantsText?(): boolean;
+  /** Feld unter dem Cursor für die Zahleneingabe mit NUMERIC + Pads, sonst null */
+  numericTarget?(): NumericTarget | null;
   /** true = laufend neu zeichnen (Blinken, Abspielmarke) */
   animating?(): boolean;
 }
@@ -33,6 +40,33 @@ export interface UiState {
   /** aktuell gehaltene Tasten (für Kombinationen wie SHIFT + F5) */
   held: Set<ButtonId>;
   message: string;
+  /** Step-Aufnahme im Stillstand (Step Edit, Grid Edit): OVER-DUB-LED leuchtet */
+  stepRec: boolean;
+  /** Step Edit / Grid Options (MPC1000-Handbuch S. 36, JJOS2XL Grid Options) */
+  stepOpts: StepOptions;
+  /** Zwischenablage für Events (Step Edit COPY, Grid COPY) */
+  clipboard: EventClip | null;
+}
+
+/** Zahlenfeld für NUMERIC (MPC1000-Handbuch S. 11). */
+export interface NumericTarget {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  /** Nachkommastellen (Tempo: 1) – die letzte getippte Ziffer ist dann die Zehntelstelle */
+  decimals?: number;
+  /** Vorzeichen mit PAD 13 umschaltbar */
+  signed?: boolean;
+  set(v: number): void;
+}
+
+export interface StepOptions {
+  autoStep: boolean;
+  duration: 'AS PLAYED' | 'TC VALUE';
+  /** TC VALUE %: Anteil des Rasters als Dauer */
+  durPct: number;
+  stepSound: boolean;
 }
 
 /** Was Screens von der App brauchen – bewusst schmal gehalten. */
@@ -53,6 +87,8 @@ export interface AppCtx {
   auditionOff(cut?: boolean): void;
   /** Noch nicht übernommenes Bearbeitungsergebnis vorhören (Keep/Retry → PLAY) */
   previewAudio(channels: Float32Array[], sampleRate: number): void;
+  /** Datei auf dem Gerät speichern (Dateidialog, sonst Download). false = abgebrochen */
+  saveFile(name: string, data: ArrayBuffer, mime: string): Promise<boolean>;
   setLatencyMeasure?(): void;
 }
 

@@ -1,7 +1,7 @@
 import type { HwEvent } from '../../input/events';
 import { CELL_H, CELL_W } from '../display/font5x7';
 import { FrameBuffer, LCD_W } from '../display/framebuffer';
-import { type AppCtx, type Screen, drawSoftkeys, pad2 } from './screen';
+import { type Screen, drawSoftkeys, pad2 } from './screen';
 
 function title(fb: FrameBuffer, text: string, right = ''): void {
   fb.text(1, 0, text);
@@ -21,30 +21,6 @@ export class PlaceholderScreen implements Screen {
     drawSoftkeys(fb, this.softkeys());
   }
   onEvent(_e: HwEvent): boolean { return false; }
-}
-
-/** LOAD (MODE + PAD 2) – M1: Audiodateien vom Gerät laden. Projekte laden folgt mit SAVE in M4. */
-export class LoadScreen implements Screen {
-  readonly id = 'load';
-  constructor(private ctx: AppCtx, private opts: { assignToPad: boolean; lastLoaded: string[] }) {}
-  softkeys() { return ['', '', '', '', '', 'ÖFFNEN']; }
-  render(fb: FrameBuffer): void {
-    fb.clear();
-    title(fb, 'LADEN', 'Audiodateien');
-    fb.text(0, CELL_H + 1, 'Pad zuweisen nach Laden:');
-    fb.text(25 * CELL_W, CELL_H + 1, this.opts.assignToPad ? 'JA  ' : 'NEIN', true);
-    fb.text(0, 2 * CELL_H + 1, 'WAV, AIFF, MP3 und weitere Formate');
-    const last = this.opts.lastLoaded;
-    fb.text(0, 3 * CELL_H + 1, `Im Speicher: ${this.ctx.store.state.samples.length} Samples`);
-    if (last.length) fb.text(0, 4 * CELL_H + 1, `Zuletzt: ${last.slice(-2).join(', ')}`.slice(0, 40));
-    fb.text(0, 5 * CELL_H + 1, 'Tipp: Datei auf ein Pad ziehen');
-    drawSoftkeys(fb, this.softkeys());
-  }
-  onEvent(e: HwEvent): boolean {
-    if (e.kind === 'wheel') { this.opts.assignToPad = e.delta > 0; return true; }
-    if (e.kind === 'button' && e.down && e.id === 'F6') { this.ctx.openFilePicker(); return true; }
-    return false;
-  }
 }
 
 export const MODE_PADS: readonly { name: string; short: string; milestone: string; lcd?: string }[] = [

@@ -37,6 +37,7 @@ export const BUTTON_KEYS: Readonly<Record<string, ButtonId>> = {
   KeyO: 'REC', KeyP: 'OVER_DUB',
   Space: 'PLAY', Backquote: 'STOP', KeyI: 'PLAY_START',
   KeyB: 'AFTER',
+  Quote: 'NUMERIC',
 };
 
 /** Data Wheel über Tastatur: +/− Schritt. */

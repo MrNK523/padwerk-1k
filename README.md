@@ -3,7 +3,7 @@
 Pad-Sampler und Sequencer im Browser – inspiriert von klassischen Pad-Samplern mit Community-Betriebssystem.
 Eigener Name, eigener Code, eigene Gestaltung; keine Marken, Firmware, Samples, Grafiken oder Schriften Dritter.
 
-**Stand: M3 – Sample-Bearbeitung (TRIM, Loop, Chop, Edit).** Architektur und Meilensteinplan: siehe Architektur-Dokument (Claude-Doc „Padwerk 1K – Architektur & Meilensteinplan“).
+**Stand: M4 – MVP komplett: Step Edit, Grid Edit, Speichern/Laden (.padwerk), Autosave.** Architektur und Meilensteinplan: siehe Architektur-Dokument (Claude-Doc „Padwerk 1K – Architektur & Meilensteinplan“).
 
 ## Entwickeln
 

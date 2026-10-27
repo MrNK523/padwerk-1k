@@ -9,7 +9,7 @@ import { SWING_MAX, SWING_MIN, TC_VALUES } from '../../core/timing';
 import type { HwEvent } from '../../input/events';
 import { CELL_H, CELL_W } from '../display/font5x7';
 import type { FrameBuffer } from '../display/framebuffer';
-import { drawSoftkeys, drawWindowFrame, pad2, step, stepEnum, type AppCtx, type Screen } from './screen';
+import { drawSoftkeys, drawWindowFrame, pad2, step, stepEnum, type AppCtx, type NumericTarget, type Screen } from './screen';
 
 export interface TransportView {
   tick: number;
@@ -172,6 +172,29 @@ export class MainScreen implements Screen {
       : `Events ${s.activeTrack.events.length}  Stimmen ${this.voices()}/32${ui.fullLevel ? '  FULL' : ''}${ui.levels16On ? '  16LEV' : ''}`);
     lbl(6, 0, info.slice(0, 40));
     drawSoftkeys(fb, this.softkeys());
+  }
+
+  /** NUMERIC: Zahlenfelder des Main-Screens (Sq, BPM, Bars, Loop, Tr, Vel%, Swing) */
+  numericTarget(): NumericTarget | null {
+    const s = this.store;
+    const set = s.state.seqSettings;
+    const q = this.seq;
+    switch (this.cursor) {
+      case 0: return this.running ? null : { label: 'Sq', value: s.state.currentSeq + 1, min: 1, max: 99, set: (v) => s.setCurrentSeq(v - 1) };
+      case 1: return { label: 'BPM', value: this.tempo(), min: TEMPO_MIN, max: TEMPO_MAX, decimals: 1, set: (v) => {
+        if (set.tempoSource === 'MAS') s.updateSeqSettings({ masterTempo: v }); else s.updateSequence((x) => { x.tempo = v; });
+      } };
+      case 4: return this.running ? null : { label: 'Bars', value: q.bars.length, min: 1, max: MAX_BARS, set: (v) => s.updateSequence((x) => setBarCount(x, v)) };
+      case 6: return { label: 'Loop von', value: q.loopFirst, min: 1, max: q.bars.length, set: (v) => s.updateSequence((x) => {
+        x.loopFirst = v;
+        if (x.loopLast !== null && x.loopLast < v) x.loopLast = v;
+      }) };
+      case 7: return { label: 'Loop bis', value: q.loopLast ?? q.bars.length, min: q.loopFirst, max: q.bars.length, set: (v) => s.updateSequence((x) => { x.loopLast = v; }) };
+      case 8: return { label: 'Track', value: s.state.activeTrack + 1, min: 1, max: 64, set: (v) => s.setActiveTrack(v - 1) };
+      case 9: return { label: 'Vel%', value: s.activeTrack.velPct, min: 1, max: 200, set: (v) => s.updateTrack(s.state.activeTrack, { velPct: v }) };
+      case 12: return { label: 'Swing', value: set.swing, min: SWING_MIN, max: SWING_MAX, set: (v) => s.updateSeqSettings({ swing: v }) };
+      default: return null;
+    }
   }
 
   onEvent(e: HwEvent): boolean {

@@ -184,9 +184,13 @@ export function sanitizeName(raw: string): string {
 export function uniqueName(name: string, taken: Iterable<string>): string {
   const set = new Set(taken);
   if (!set.has(name)) return name;
-  for (let i = 2; i < 1000; i++) {
+  // vorhandene Endnummer weiterzählen statt eine zweite anzuhängen
+  const m = /^(.*?)(\d+)$/.exec(name);
+  const stem = m ? m[1]! : name;
+  const first = m ? Number(m[2]) + 1 : 2;
+  for (let i = first; i < first + 1000; i++) {
     const suffix = String(i).padStart(2, '0');
-    const candidate = name.slice(0, SAMPLE_NAME_MAX - suffix.length) + suffix;
+    const candidate = stem.slice(0, SAMPLE_NAME_MAX - suffix.length) + suffix;
     if (!set.has(candidate)) return candidate;
   }
   return name;
